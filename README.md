@@ -6,7 +6,7 @@ Contenedor que provisiona la versión Postgres al resto de microservicios usando
 Prioriza máxima seguridad restringiendo los saltos de IPs a lo estrictamente interno.
 
 ```bash
-cd /home/admincenter/contenedores/paramascotas-DB
+cd /home/admincenter/contenedores/paramascotasec-DB
 ./scripts/deploy-production.sh
 ```
 
