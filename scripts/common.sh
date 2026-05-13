@@ -78,12 +78,6 @@ resolve_env_file() {
     return 0
   fi
 
-  if [[ "${mode}" == "production" && -f "${APP_DIR}/.env.production" ]]; then
-    upsert_env_value "${APP_DIR}/.env.production" "DB_ENV" "production"
-    printf '%s\n' "${APP_DIR}/.env.production"
-    return 0
-  fi
-
   if [[ -f "${APP_DIR}/.env" ]]; then
     upsert_env_value "${APP_DIR}/.env" "DB_ENV" "production"
     printf '%s\n' "${APP_DIR}/.env"
