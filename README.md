@@ -16,7 +16,7 @@ cd /home/admincenter/contenedores/paramascotasec-DB
 Extiende un canal abierto para visores externos o desarrolladores conectados por red de LAN/VPN.
 
 ```bash
-cd /home/admincenter/contenedores/paramascotas-DB
+cd /home/admincenter/contenedores/paramascotasec-DB
 ./scripts/deploy-development.sh
 ```
 
