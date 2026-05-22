@@ -10,6 +10,7 @@ ENV_FILE="$(resolve_env_file "${MODE}")"
 
 ensure_prereqs
 load_env_file "${ENV_FILE}"
+BACKUP_PASSPHRASE="${BACKUP_DECRYPTION_PASSPHRASE:-${BACKUP_ENCRYPTION_PASSPHRASE}}"
 
 if [[ ! -f "${BACKUP_FILE}" ]]; then
   echo "No existe el snapshot ${BACKUP_FILE}. Ejecuta primero ./scripts/backup-and-stop.sh ${MODE}" >&2
@@ -42,7 +43,7 @@ compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
   psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "CREATE DATABASE ${RESTORE_DB} OWNER ${RESTORE_ROLE};"
 
 echo "Restaurando cluster completo desde backup cifrado..."
-decrypt_backup_stream < "${BACKUP_FILE}" \
+BACKUP_ENCRYPTION_PASSPHRASE="${BACKUP_PASSPHRASE}" decrypt_backup_stream < "${BACKUP_FILE}" \
   | normalize_dump_stream \
   | compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${RESTORE_PASSWORD}" db psql -v ON_ERROR_STOP=1 -U "${RESTORE_ROLE}" -d "${RESTORE_DB}"
 
