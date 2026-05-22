@@ -18,10 +18,13 @@ fi
 
 RESTORE_ROLE="codex_restore_$(date +%s)"
 RESTORE_DB="${RESTORE_ROLE}_db"
+RESTORE_PASSWORD="$(openssl rand -hex 32)"
 
 cleanup_restore_artifacts() {
-  compose_cmd "${ENV_FILE}" exec -T db psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "DROP DATABASE IF EXISTS ${RESTORE_DB};" >/dev/null 2>&1 || true
-  compose_cmd "${ENV_FILE}" exec -T db psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "DROP ROLE IF EXISTS ${RESTORE_ROLE};" >/dev/null 2>&1 || true
+  compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+    psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "DROP DATABASE IF EXISTS ${RESTORE_DB};" >/dev/null 2>&1 || true
+  compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+    psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "DROP ROLE IF EXISTS ${RESTORE_ROLE};" >/dev/null 2>&1 || true
 }
 
 trap cleanup_restore_artifacts EXIT
@@ -33,11 +36,15 @@ compose_cmd "${ENV_FILE}" up -d --remove-orphans db
 wait_for_db "${ENV_FILE}"
 
 echo "Creando rol temporal de restauracion..."
-compose_cmd "${ENV_FILE}" exec -T db psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "CREATE ROLE ${RESTORE_ROLE} WITH LOGIN SUPERUSER;"
-compose_cmd "${ENV_FILE}" exec -T db psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "CREATE DATABASE ${RESTORE_DB} OWNER ${RESTORE_ROLE};"
+compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+  psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "CREATE ROLE ${RESTORE_ROLE} WITH LOGIN SUPERUSER PASSWORD '${RESTORE_PASSWORD}';"
+compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+  psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "CREATE DATABASE ${RESTORE_DB} OWNER ${RESTORE_ROLE};"
 
 echo "Restaurando cluster completo desde backup cifrado..."
-decrypt_backup_stream < "${BACKUP_FILE}" | normalize_dump_stream | compose_cmd "${ENV_FILE}" exec -T db psql -v ON_ERROR_STOP=1 -U "${RESTORE_ROLE}" -d "${RESTORE_DB}"
+decrypt_backup_stream < "${BACKUP_FILE}" \
+  | normalize_dump_stream \
+  | compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${RESTORE_PASSWORD}" db psql -v ON_ERROR_STOP=1 -U "${RESTORE_ROLE}" -d "${RESTORE_DB}"
 
 echo "Eliminando rol temporal de restauracion..."
 cleanup_restore_artifacts
