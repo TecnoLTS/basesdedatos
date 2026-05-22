@@ -30,7 +30,7 @@ assert_db_mode "${MODE}"
 
 echo "Generando snapshot completo cifrado en ${BACKUP_FILE}..."
 compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
-  pg_dumpall -U "${POSTGRES_USER}" --clean --if-exists \
+  pg_dumpall -h 127.0.0.1 -U "${POSTGRES_USER}" --clean --if-exists \
   | normalize_dump_stream | encrypt_backup_stream > "${TMP_FILE}"
 mv "${TMP_FILE}" "${BACKUP_FILE}"
 chmod 600 "${BACKUP_FILE}"

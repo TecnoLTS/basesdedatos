@@ -137,7 +137,8 @@ wait_for_db() {
   local i
 
   for ((i = 1; i <= attempts; i++)); do
-    if compose_cmd "${env_file}" exec -T db pg_isready -U "${POSTGRES_USER}" -d postgres >/dev/null 2>&1; then
+    if compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+      pg_isready -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres >/dev/null 2>&1; then
       return 0
     fi
     sleep 1

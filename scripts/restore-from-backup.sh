@@ -23,9 +23,9 @@ RESTORE_PASSWORD="$(openssl rand -hex 32)"
 
 cleanup_restore_artifacts() {
   compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
-    psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "DROP DATABASE IF EXISTS ${RESTORE_DB};" >/dev/null 2>&1 || true
+    psql -h 127.0.0.1 -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "DROP DATABASE IF EXISTS ${RESTORE_DB};" >/dev/null 2>&1 || true
   compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
-    psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "DROP ROLE IF EXISTS ${RESTORE_ROLE};" >/dev/null 2>&1 || true
+    psql -h 127.0.0.1 -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "DROP ROLE IF EXISTS ${RESTORE_ROLE};" >/dev/null 2>&1 || true
 }
 
 trap cleanup_restore_artifacts EXIT
@@ -38,21 +38,21 @@ wait_for_db "${ENV_FILE}"
 
 echo "Creando rol temporal de restauracion..."
 compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
-  psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "CREATE ROLE ${RESTORE_ROLE} WITH LOGIN SUPERUSER PASSWORD '${RESTORE_PASSWORD}';"
+  psql -h 127.0.0.1 -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "CREATE ROLE ${RESTORE_ROLE} WITH LOGIN SUPERUSER PASSWORD '${RESTORE_PASSWORD}';"
 compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
-  psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "CREATE DATABASE ${RESTORE_DB} OWNER ${RESTORE_ROLE};"
+  psql -h 127.0.0.1 -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d postgres -c "CREATE DATABASE ${RESTORE_DB} OWNER ${RESTORE_ROLE};"
 
 echo "Restaurando cluster completo desde backup cifrado..."
 BACKUP_ENCRYPTION_PASSPHRASE="${BACKUP_PASSPHRASE}" decrypt_backup_stream < "${BACKUP_FILE}" \
   | normalize_dump_stream \
-  | compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${RESTORE_PASSWORD}" db psql -v ON_ERROR_STOP=1 -U "${RESTORE_ROLE}" -d "${RESTORE_DB}"
+  | compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${RESTORE_PASSWORD}" db psql -h 127.0.0.1 -v ON_ERROR_STOP=1 -U "${RESTORE_ROLE}" -d "${RESTORE_DB}"
 
 echo "Eliminando rol temporal de restauracion..."
 cleanup_restore_artifacts
 trap - EXIT
 
 echo "Verificando estado del servicio..."
-compose_cmd "${ENV_FILE}" exec -T db pg_isready -U "${POSTGRES_USER}" -d postgres >/dev/null
+compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db pg_isready -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres >/dev/null
 compose_cmd "${ENV_FILE}" ps
 
 echo "Base de datos restaurada desde backup"
