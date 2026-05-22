@@ -71,7 +71,7 @@ resolve_env_file() {
       fi
     fi
 
-    upsert_env_value "${env_file}" "POSTGRES_BIND_IP" "0.0.0.0"
+    upsert_env_value "${env_file}" "POSTGRES_BIND_IP" "127.0.0.1"
     upsert_env_value "${env_file}" "DB_ENV" "development"
 
     printf '%s\n' "${env_file}"

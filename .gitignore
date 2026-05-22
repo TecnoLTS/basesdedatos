@@ -2,5 +2,11 @@
 .env.*
 !.env.example
 backups/*.sql
+backups/**/*.sql
+backups/*.sql.enc
+backups/**/*.sql.enc
+backups/*.dump
+backups/**/*.dump
 backups/*.tar.gz
+backups/**/*.tar.gz
 postgres16_data/
