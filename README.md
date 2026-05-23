@@ -32,6 +32,7 @@ Para resguardar el ecosistema de la base de datos de manera inviolable (cifrado 
 ```bash
 cd /home/admincenter/contenedores/paramascotasec-DB
 ./scripts/backup-and-stop.sh production
+./scripts/backup-and-stop.sh development
 ```
 *Este proceso generará un snapshot encapsulado y luego detendrá la base de datos de forma segura para evitar escritura residual.*
 
