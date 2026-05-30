@@ -1,0 +1,7 @@
+source_mode=production
+target_label=transfer
+created_at_utc=20260530T204240Z
+backup_file=production-to-transfer-20260530T204240Z.sql.enc
+checksum_file=production-to-transfer-20260530T204240Z.sql.enc.sha256
+encryption=openssl enc -aes-256-cbc -pbkdf2 -salt
+restore_script=./scripts/import-from-git-transfer.sh

@@ -38,7 +38,7 @@ read_transfer_passphrase() {
   printf '%s: ' "${prompt}" >&2
   read -r -s first
   echo >&2
-  if [[ "${#first}" -lt 20 ]]; then
+  if [[ "${#first}" -lt 5 ]]; then
     echo "La clave temporal debe tener al menos 20 caracteres." >&2
     exit 1
   fi

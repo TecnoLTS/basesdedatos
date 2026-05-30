@@ -41,10 +41,9 @@ En el servidor origen, conectado a la base vieja:
 
 ```bash
 cd /home/admincenter/contenedores/paramascotasec-DB
-git checkout -b sales-transfer-$(date -u +%Y%m%d%H%M)
 ./scripts/transfer-sales.sh export ORD-ID-1 ORD-ID-2 --stage
 git commit -m "Transfer encrypted sales"
-git push -u origin HEAD
+git push
 ```
 
 Si las dos ventas son exactamente las ultimas ventas registradas en esa base:
@@ -59,8 +58,7 @@ En el servidor destino:
 
 ```bash
 cd /home/admincenter/contenedores/paramascotasec-DB
-git fetch origin sales-transfer-YYYYMMDDHHMM
-git checkout sales-transfer-YYYYMMDDHHMM
+git pull
 ./scripts/transfer-sales.sh restore
 ```
 
@@ -72,7 +70,7 @@ Para indicar un paquete concreto:
 ./scripts/transfer-sales.sh restore git-transfer/sales-production-sales-YYYYMMDDTHHMMSSZ.json.enc
 ```
 
-Despues de validar, vuelve a la rama normal y elimina la rama temporal.
+Despues de validar, puedes eliminar el paquete cifrado de `git-transfer/` y hacer otro commit normal si ya no lo necesitas.
 
 ### Base Completa
 
@@ -80,10 +78,9 @@ Despues de validar, vuelve a la rama normal y elimina la rama temporal.
 
 ```bash
 cd /home/admincenter/contenedores/paramascotasec-DB
-git checkout -b db-transfer-$(date -u +%Y%m%d%H%M)
 ./scripts/transfer-db.sh export --stage
 git commit -m "Transfer encrypted database backup"
-git push -u origin HEAD
+git push
 ```
 
 El script detecta el ambiente activo, te pide una clave temporal dos veces, genera el paquete cifrado en `git-transfer/` y lo agrega al index de Git.
@@ -92,8 +89,7 @@ El script detecta el ambiente activo, te pide una clave temporal dos veces, gene
 
 ```bash
 cd /home/admincenter/contenedores/paramascotasec-DB
-git fetch origin db-transfer-YYYYMMDDHHMM
-git checkout db-transfer-YYYYMMDDHHMM
+git pull
 ./scripts/transfer-db.sh restore
 ```
 
@@ -105,7 +101,7 @@ Si hay varios paquetes, indica el archivo exacto:
 ./scripts/transfer-db.sh restore git-transfer/NOMBRE.sql.enc
 ```
 
-Despues de validar la restauracion, vuelve a tu rama normal y elimina la rama temporal del remoto.
+Despues de validar la restauracion, puedes eliminar el paquete cifrado de `git-transfer/` y hacer otro commit normal si ya no lo necesitas.
 
 ## Backups Locales
 
