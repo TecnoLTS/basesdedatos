@@ -5,17 +5,77 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./common.sh
 source "${SCRIPT_DIR}/common.sh"
 
-MODE="${1:-production}"
+MODE="production"
+BACKUP_FILE_ARG=""
+ASSUME_YES="${RESTORE_ASSUME_YES:-0}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    production|development)
+      MODE="$1"
+      ;;
+    --yes|-y)
+      ASSUME_YES=1
+      ;;
+    --help|-h)
+      echo "Uso: $0 [production|development] [ruta-backup.sql.enc] [--yes]"
+      exit 0
+      ;;
+    *)
+      if [[ -z "${BACKUP_FILE_ARG}" ]]; then
+        BACKUP_FILE_ARG="$1"
+      else
+        echo "Argumento no reconocido: $1" >&2
+        exit 1
+      fi
+      ;;
+  esac
+  shift
+done
+
+require_valid_mode "${MODE}"
 ENV_FILE="$(resolve_env_file "${MODE}")"
 
 ensure_prereqs
 load_env_file "${ENV_FILE}"
 BACKUP_PASSPHRASE="${BACKUP_DECRYPTION_PASSPHRASE:-${BACKUP_ENCRYPTION_PASSPHRASE}}"
 
+if [[ -z "${BACKUP_FILE}" ]]; then
+  if [[ -n "${BACKUP_FILE_ARG}" ]]; then
+    BACKUP_FILE="$(absolute_app_path "${BACKUP_FILE_ARG}")"
+  else
+    BACKUP_FILE="$(latest_backup_file_for_mode "${MODE}")"
+  fi
+fi
+
 if [[ ! -f "${BACKUP_FILE}" ]]; then
   echo "No existe el snapshot ${BACKUP_FILE}. Ejecuta primero ./scripts/backup-and-stop.sh ${MODE}" >&2
   exit 1
 fi
+
+confirm_restore() {
+  if [[ "${ASSUME_YES}" == "1" ]]; then
+    return 0
+  fi
+
+  if [[ ! -t 0 ]]; then
+    echo "La restauracion destruye el directorio destino ${DATA_DIR}. Ejecuta con --yes si ya validaste el backup." >&2
+    exit 1
+  fi
+
+  echo "ATENCION: se reemplazara completamente la base ${MODE} en ${DATA_DIR}."
+  echo "Backup origen: ${BACKUP_FILE}"
+  read -r -p "Escribe RESTORE ${MODE} para continuar: " answer
+  if [[ "${answer}" != "RESTORE ${MODE}" ]]; then
+    echo "Restauracion cancelada" >&2
+    exit 1
+  fi
+}
+
+confirm_restore
+
+echo "Verificando que el backup se pueda desencriptar antes de limpiar ${MODE}..."
+BACKUP_ENCRYPTION_PASSPHRASE="${BACKUP_PASSPHRASE}" decrypt_backup_stream < "${BACKUP_FILE}" >/dev/null
 
 RESTORE_ROLE="codex_restore_$(date +%s)"
 RESTORE_DB="${RESTORE_ROLE}_db"

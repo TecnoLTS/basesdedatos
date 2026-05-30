@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:18.4-alpine3.23
     container_name: next-test-db
     restart: unless-stopped
     environment:
@@ -8,13 +8,14 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
       POSTGRES_DB: ${POSTGRES_DB:?Define POSTGRES_DB en .env}
       POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS:---auth-host=scram-sha-256 --auth-local=scram-sha-256}
+      PGDATA: /var/lib/postgresql/18/docker
       DB_ENV: ${DB_ENV:-production}
       TZ: America/Guayaquil
     ports:
       - "${POSTGRES_BIND_IP:?Define POSTGRES_BIND_IP en .env}:${POSTGRES_PORT:?Define POSTGRES_PORT en .env}:5432"
     volumes:
-      # Datos de Postgres 16 (ya migrados)
-      - ./postgres16_data:/var/lib/postgresql/data
+      # Datos de Postgres 18. No montar /var/lib/postgresql/data en la imagen 18.
+      - ${POSTGRES_DATA_DIR:-./postgres18_data}:/var/lib/postgresql
       # Carpeta para backups .sql o .dump
       - ./backups:/backups
     networks:

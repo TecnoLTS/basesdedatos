@@ -3,8 +3,111 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-BACKUP_FILE="${BACKUP_FILE:-${APP_DIR}/backups/backup.sql.enc}"
-DATA_DIR="${DATA_DIR:-${APP_DIR}/postgres16_data}"
+BACKUP_FILE="${BACKUP_FILE:-}"
+DATA_DIR="${DATA_DIR:-${APP_DIR}/postgres18_data}"
+
+valid_mode() {
+  local mode="$1"
+
+  [[ "${mode}" == "production" || "${mode}" == "development" ]]
+}
+
+require_valid_mode() {
+  local mode="$1"
+
+  if ! valid_mode "${mode}"; then
+    echo "Modo invalido: ${mode}. Usa production o development." >&2
+    exit 1
+  fi
+}
+
+default_data_dir_for_mode() {
+  local mode="$1"
+
+  require_valid_mode "${mode}"
+  if [[ "${mode}" == "development" ]]; then
+    printf '%s\n' "./postgres18_development_data"
+  else
+    printf '%s\n' "./postgres18_data"
+  fi
+}
+
+absolute_app_path() {
+  local path="$1"
+
+  if [[ "${path}" == /* ]]; then
+    printf '%s\n' "${path}"
+  else
+    printf '%s\n' "${APP_DIR}/${path#./}"
+  fi
+}
+
+backup_dir_for_mode() {
+  local mode="$1"
+
+  require_valid_mode "${mode}"
+  printf '%s\n' "${APP_DIR}/backups/${mode}"
+}
+
+timestamp_utc() {
+  date -u +%Y%m%dT%H%M%SZ
+}
+
+default_backup_file_for_mode() {
+  local mode="$1"
+  local timestamp="${2:-$(timestamp_utc)}"
+
+  printf '%s/%s-%s.sql.enc\n' "$(backup_dir_for_mode "${mode}")" "${mode}" "${timestamp}"
+}
+
+latest_backup_file_for_mode() {
+  local mode="$1"
+
+  printf '%s/latest.sql.enc\n' "$(backup_dir_for_mode "${mode}")"
+}
+
+running_db_env() {
+  docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' next-test-db 2>/dev/null | awk -F= '/^DB_ENV=/{print $2; exit}' || true
+}
+
+default_mode() {
+  local mode
+
+  mode="$(running_db_env)"
+  if valid_mode "${mode}"; then
+    printf '%s\n' "${mode}"
+    return 0
+  fi
+
+  if [[ -f "${APP_DIR}/.env" ]]; then
+    mode="$(env_value_from_file "${APP_DIR}/.env" DB_ENV)"
+    if valid_mode "${mode}"; then
+      printf '%s\n' "${mode}"
+      return 0
+    fi
+  fi
+
+  printf '%s\n' "production"
+}
+
+latest_git_transfer_backup() {
+  find "${APP_DIR}/git-transfer" -maxdepth 1 -type f -name '*.sql.enc' -printf '%T@ %p\n' 2>/dev/null \
+    | sort -nr \
+    | awk 'NR == 1 {print $2}'
+}
+
+env_value_from_file() {
+  local env_file="$1"
+  local key="$2"
+
+  (
+    set -a
+    # shellcheck disable=SC1090
+    source "${env_file}"
+    set +a
+    printf '%s\n' "${!key:-}"
+  )
+}
 
 ensure_prereqs() {
   if ! command -v docker >/dev/null 2>&1; then
@@ -52,6 +155,7 @@ PY
 
 resolve_env_file() {
   local mode="${1:-production}"
+  require_valid_mode "${mode}"
 
   if [[ "${mode}" == "development" ]]; then
     local env_file="${APP_DIR}/.env.development"
@@ -73,6 +177,7 @@ resolve_env_file() {
 
     upsert_env_value "${env_file}" "POSTGRES_BIND_IP" "127.0.0.1"
     upsert_env_value "${env_file}" "DB_ENV" "development"
+    upsert_env_value "${env_file}" "POSTGRES_DATA_DIR" "$(default_data_dir_for_mode "${mode}")"
 
     printf '%s\n' "${env_file}"
     return 0
@@ -80,6 +185,7 @@ resolve_env_file() {
 
   if [[ -f "${APP_DIR}/.env" ]]; then
     upsert_env_value "${APP_DIR}/.env" "DB_ENV" "production"
+    upsert_env_value "${APP_DIR}/.env" "POSTGRES_DATA_DIR" "$(default_data_dir_for_mode "${mode}")"
     printf '%s\n' "${APP_DIR}/.env"
     return 0
   fi
@@ -88,6 +194,7 @@ resolve_env_file() {
     cp "${APP_DIR}/.env.example" "${APP_DIR}/.env"
     echo "Se creo ${APP_DIR}/.env desde .env.example. Ajusta credenciales si hace falta."
     upsert_env_value "${APP_DIR}/.env" "DB_ENV" "production"
+    upsert_env_value "${APP_DIR}/.env" "POSTGRES_DATA_DIR" "$(default_data_dir_for_mode "${mode}")"
     printf '%s\n' "${APP_DIR}/.env"
     return 0
   fi
@@ -108,6 +215,10 @@ load_env_file() {
   : "${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en ${env_file}}"
   : "${POSTGRES_DB:?Falta POSTGRES_DB en ${env_file}}"
   : "${BACKUP_ENCRYPTION_PASSPHRASE:?Falta BACKUP_ENCRYPTION_PASSPHRASE en ${env_file}}"
+
+  POSTGRES_DATA_DIR="${POSTGRES_DATA_DIR:-./postgres18_data}"
+  DATA_DIR="$(absolute_app_path "${POSTGRES_DATA_DIR}")"
+  export POSTGRES_DATA_DIR DATA_DIR
 }
 
 assert_db_mode() {
