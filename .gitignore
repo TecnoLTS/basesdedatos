@@ -13,6 +13,7 @@ transfer-secrets/**
 !transfer-secrets/
 !transfer-secrets/.gitkeep
 postgres*_data/
+postgres*_data.*/
 git-transfer/production-to-transfer-20260530T204240Z.sql.enc
 git-transfer/production-to-transfer-20260530T204240Z.sql.enc
 git-transfer/production-to-transfer-20260530T204240Z.sql.enc.manifest

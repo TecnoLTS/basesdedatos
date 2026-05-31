@@ -11,15 +11,13 @@ services:
       PGDATA: /var/lib/postgresql/18/docker
       DB_ENV: ${DB_ENV:-production}
       TZ: America/Guayaquil
-    ports:
-      - "${POSTGRES_BIND_IP:?Define POSTGRES_BIND_IP en .env}:${POSTGRES_PORT:?Define POSTGRES_PORT en .env}:5432"
     volumes:
       # Datos de Postgres 18. No montar /var/lib/postgresql/data en la imagen 18.
       - ${POSTGRES_DATA_DIR:-./postgres18_data}:/var/lib/postgresql
       # Carpeta para backups .sql o .dump
       - ./backups:/backups
     networks:
-      edge:
+      db_internal:
         aliases:
           - db
     healthcheck:
@@ -34,6 +32,6 @@ services:
         max-file: "3"
 
 networks:
-  edge:
+  db_internal:
     external: true
-    name: edge
+    name: paramascotasec-db-internal

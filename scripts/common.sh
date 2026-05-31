@@ -128,6 +128,10 @@ ensure_prereqs() {
   if ! docker network inspect edge >/dev/null 2>&1; then
     docker network create edge >/dev/null
   fi
+
+  if ! docker network inspect paramascotasec-db-internal >/dev/null 2>&1; then
+    docker network create --internal paramascotasec-db-internal >/dev/null
+  fi
 }
 
 upsert_env_value() {
