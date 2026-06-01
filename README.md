@@ -168,7 +168,7 @@ La version debe reportar PostgreSQL `18.4` y el servicio debe quedar `healthy`.
 Validar backend:
 
 ```bash
-curl -fsS http://127.0.0.1:8080/api/health
+docker exec paramascotasec-backend-web wget -q -O /dev/null http://127.0.0.1:8080/api/health
 ```
 
 ## Seguridad Operativa
