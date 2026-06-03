@@ -124,6 +124,8 @@ echo "Eliminando rol temporal de restauracion..."
 cleanup_restore_artifacts
 trap - EXIT
 
+sync_backend_runtime_role "${MODE}" "${ENV_FILE}"
+
 echo "Verificando estado del servicio..."
 compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db pg_isready -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres >/dev/null
 compose_cmd "${ENV_FILE}" ps

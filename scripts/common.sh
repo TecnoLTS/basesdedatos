@@ -349,3 +349,71 @@ encrypt_backup_stream() {
 decrypt_backup_stream() {
   openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_ENCRYPTION_PASSPHRASE
 }
+
+sync_backend_runtime_role() {
+  local mode="$1"
+  local env_file="$2"
+  local backend_env_file
+  local backend_db_name
+  local backend_db_user
+  local backend_db_password
+  local role_exists
+
+  require_valid_mode "${mode}"
+
+  if [[ "${mode}" == "development" ]]; then
+    backend_env_file="${APP_DIR}/../paramascotasec-backend/.env.development"
+  else
+    backend_env_file="${APP_DIR}/../paramascotasec-backend/.env"
+  fi
+
+  if [[ ! -f "${backend_env_file}" ]]; then
+    echo "Aviso: no se encontro ${backend_env_file}; omitiendo ajuste del rol runtime del backend."
+    return 0
+  fi
+
+  backend_db_name="$(env_value_from_file "${backend_env_file}" DB_DATABASE)"
+  backend_db_user="$(env_value_from_file "${backend_env_file}" DB_USERNAME)"
+  backend_db_password="$(env_value_from_file "${backend_env_file}" DB_PASSWORD)"
+
+  if [[ -z "${backend_db_name}" || -z "${backend_db_user}" || -z "${backend_db_password}" ]]; then
+    echo "Aviso: faltan DB_DATABASE, DB_USERNAME o DB_PASSWORD en ${backend_env_file}; omitiendo ajuste del rol runtime del backend."
+    return 0
+  fi
+
+  if [[ ! "${backend_db_name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ || ! "${backend_db_user}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    echo "Nombre de DB o rol backend no seguro para ajustar automaticamente: ${backend_db_name}/${backend_db_user}" >&2
+    exit 1
+  fi
+
+  echo "Alineando rol runtime del backend para ${backend_db_name}..."
+
+  role_exists="$(
+    compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+      psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname = '${backend_db_user}'"
+  )"
+
+  if [[ "${role_exists}" == "1" ]]; then
+    compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+      psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 -v backend_db_password="${backend_db_password}" >/dev/null <<SQL
+ALTER ROLE "${backend_db_user}" WITH LOGIN PASSWORD :'backend_db_password';
+SQL
+  else
+    compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+      psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 -v backend_db_password="${backend_db_password}" >/dev/null <<SQL
+CREATE ROLE "${backend_db_user}" WITH LOGIN PASSWORD :'backend_db_password';
+SQL
+  fi
+
+  compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+    psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 >/dev/null <<SQL
+GRANT CONNECT ON DATABASE "${backend_db_name}" TO "${backend_db_user}";
+SQL
+
+  compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+    psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d "${backend_db_name}" -v ON_ERROR_STOP=1 >/dev/null <<SQL
+GRANT USAGE ON SCHEMA public TO "${backend_db_user}";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "${backend_db_user}";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "${backend_db_user}";
+SQL
+}
