@@ -7,11 +7,11 @@ source "${SCRIPT_DIR}/common.sh"
 
 usage() {
   cat <<'USAGE'
-Uso: ./scripts/export-for-git.sh <production|development> [etiqueta-destino] [--stage]
+Uso: ./scripts/export-for-git.sh <production|development> [etiqueta-destino]
 
 Genera un backup cifrado con una clave temporal distinta a la clave normal del
-ambiente. El backup queda en git-transfer/ y puede subirse con Git usando
-git add -f. La clave temporal nunca se agrega al repo.
+ambiente. El backup queda en git-transfer/ para que Git detecte el cambio. La
+clave temporal nunca se agrega al repo.
 
 Variables opcionales:
   TRANSFER_BACKUP_PASSPHRASE   Clave temporal ya acordada fuera de Git.
@@ -29,12 +29,11 @@ if [[ $# -gt 0 ]]; then
 fi
 
 TARGET_LABEL="transfer"
-STAGE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --stage)
-      STAGE=1
+    --stage|--publish)
+      echo "Aviso: $1 ya no hace git add, commit ni push; el archivo queda para que Git lo detecte." >&2
       ;;
     *)
       if [[ "${TARGET_LABEL}" == "transfer" ]]; then
@@ -90,11 +89,6 @@ BACKUP_ENCRYPTION_PASSPHRASE_OVERRIDE="${TRANSFER_PASSPHRASE}" \
 chmod 600 "${BACKUP_PATH}" "${BACKUP_PATH}.sha256"
 chmod 644 "${MANIFEST_PATH}"
 
-if [[ "${STAGE}" == "1" ]]; then
-  git -C "${APP_DIR}" add -f "${BACKUP_PATH}" "${BACKUP_PATH}.sha256" "${MANIFEST_PATH}"
-  echo "Paquete agregado al index de Git."
-fi
-
 echo "Paquete listo:"
 echo "  ${BACKUP_PATH}"
 echo "  ${BACKUP_PATH}.sha256"
@@ -107,7 +101,4 @@ else
   echo "Se uso TRANSFER_BACKUP_PASSPHRASE desde el entorno; no se guardo clave local."
 fi
 
-echo "Para subirlo por Git:"
-echo "  git add -f ${BACKUP_PATH#${APP_DIR}/} ${BACKUP_PATH#${APP_DIR}/}.sha256 ${MANIFEST_PATH#${APP_DIR}/}"
-echo "  git commit -m \"Transfer encrypted ${MODE} database backup ${TIMESTAMP}\""
-echo "  git push"
+echo "Git detectara estos archivos; decide luego si haces commit y push."

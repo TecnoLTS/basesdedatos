@@ -8,16 +8,16 @@ source "${SCRIPT_DIR}/common.sh"
 usage() {
   cat <<'USAGE'
 Uso:
-  ./scripts/transfer-db.sh export [--stage] [--label nombre] [--mode production|development]
+  ./scripts/transfer-db.sh export [--label nombre] [--mode production|development]
   ./scripts/transfer-db.sh restore [git-transfer/backup.sql.enc] [--yes] [--mode production|development]
 
 Flujo normal:
-  1. En origen:  ./scripts/transfer-db.sh export --stage
-  2. Sube el commit por Git.
-  3. En destino: ./scripts/transfer-db.sh restore
+  1. En origen:  ./scripts/transfer-db.sh export
+  2. En destino: ./scripts/transfer-db.sh restore
 
 El script detecta el ambiente activo. La clave temporal la eliges en origen y
-la vuelves a ingresar en destino. Esa clave no se guarda en Git.
+la vuelves a ingresar en destino. Esa clave no se guarda en Git. El paquete
+cifrado queda visible para Git; tu decides cuando hacer commit y push.
 USAGE
 }
 
@@ -62,7 +62,6 @@ shift
 
 MODE=""
 LABEL="transfer"
-STAGE=0
 ASSUME_YES=0
 BACKUP_ARG=""
 
@@ -84,8 +83,8 @@ while [[ $# -gt 0 ]]; do
       fi
       shift
       ;;
-    --stage)
-      STAGE=1
+    --stage|--publish)
+      echo "Aviso: $1 ya no hace git add, commit ni push; el archivo queda para que Git lo detecte." >&2
       ;;
     --yes|-y)
       ASSUME_YES=1
@@ -116,13 +115,8 @@ case "${COMMAND}" in
       TRANSFER_PASSPHRASE="$(read_transfer_passphrase "Elige una clave temporal para este backup" 1)"
     fi
 
-    args=("${MODE}" "${LABEL}")
-    if [[ "${STAGE}" == "1" ]]; then
-      args+=("--stage")
-    fi
-
     TRANSFER_BACKUP_PASSPHRASE="${TRANSFER_PASSPHRASE}" \
-      "${SCRIPT_DIR}/export-for-git.sh" "${args[@]}"
+      "${SCRIPT_DIR}/export-for-git.sh" "${MODE}" "${LABEL}"
     ;;
   restore|import)
     if [[ -z "${BACKUP_ARG}" ]]; then

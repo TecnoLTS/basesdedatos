@@ -38,7 +38,7 @@ ENV_FILE="$(resolve_env_file "${MODE}")"
 
 ensure_prereqs
 load_env_file "${ENV_FILE}"
-BACKUP_PASSPHRASE="${BACKUP_DECRYPTION_PASSPHRASE:-${BACKUP_ENCRYPTION_PASSPHRASE}}"
+BACKUP_PASSPHRASE="${BACKUP_DECRYPTION_PASSPHRASE:-}"
 
 if [[ -z "${BACKUP_FILE}" ]]; then
   if [[ -n "${BACKUP_FILE_ARG}" ]]; then
@@ -51,6 +51,15 @@ fi
 if [[ ! -f "${BACKUP_FILE}" ]]; then
   echo "No existe el snapshot ${BACKUP_FILE}. Ejecuta primero ./scripts/backup-and-stop.sh ${MODE}" >&2
   exit 1
+fi
+
+if [[ -z "${BACKUP_PASSPHRASE}" ]]; then
+  if [[ ! -t 0 ]]; then
+    echo "Falta BACKUP_DECRYPTION_PASSPHRASE con la clave del backup." >&2
+    exit 1
+  fi
+  read -r -s -p "Clave del backup cifrado: " BACKUP_PASSPHRASE
+  echo
 fi
 
 confirm_restore() {
