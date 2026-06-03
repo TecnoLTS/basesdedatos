@@ -4,9 +4,9 @@ services:
     container_name: next-test-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?Define POSTGRES_USER en .env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
-      POSTGRES_DB: ${POSTGRES_DB:?Define POSTGRES_DB en .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Define POSTGRES_USER en entorno/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en entorno/.env}
+      POSTGRES_DB: ${POSTGRES_DB:?Define POSTGRES_DB en entorno/.env}
       POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS:---auth-host=scram-sha-256 --auth-local=scram-sha-256}
       PGDATA: /var/lib/postgresql/18/docker
       DB_ENV: ${DB_ENV:-production}
@@ -21,7 +21,7 @@ services:
         aliases:
           - db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?Define POSTGRES_USER en .env}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?Define POSTGRES_USER en entorno/.env}"]
       interval: 10s
       timeout: 5s
       retries: 5

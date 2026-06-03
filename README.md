@@ -7,9 +7,9 @@ Servicio PostgreSQL compartido por los microservicios de Paramascotas EC.
 - PostgreSQL: `18.4`
 - Imagen Docker: `postgres:18.4-alpine3.23`
 - `PGDATA`: `/var/lib/postgresql/18/docker`
-- Produccion usa `.env` y `postgres18_data`
-- Desarrollo usa `.env.development` y `postgres18_development_data`
-- Los datos y archivos `.env` no se versionan en Git
+- Produccion usa `entorno/.env`, `entorno/servidor.env` y `postgres18_data`
+- Desarrollo usa `entorno/.env`, `entorno/servidor.env` y `postgres18_development_data`
+- Los datos y archivos `entorno/.env` no se versionan en Git
 - Los backups cifrados pueden versionarse solo como paquetes temporales de transferencia
 
 Este proyecto usa un solo `container_name` (`next-test-db`) y un solo puerto. Por eso production y development no corren al mismo tiempo en el mismo host; los scripts recrean el contenedor apuntando al directorio de datos del ambiente elegido.
@@ -105,8 +105,8 @@ El script pide la misma clave temporal que usaste al sacar el backup. `--mode de
 
 ```bash
 docker exec next-test-db postgres --version
-docker compose --env-file .env ps
-docker compose --env-file .env logs -f db
+docker compose --env-file entorno/.env ps
+docker compose --env-file entorno/.env logs -f db
 ```
 
 La version debe reportar PostgreSQL `18.4` y el servicio debe quedar `healthy`.
@@ -119,7 +119,7 @@ docker exec paramascotasec-backend-web wget -q -O /dev/null http://127.0.0.1:808
 
 ## Seguridad Operativa
 
-- No versionar `.env`, claves ni datos de PostgreSQL.
+- No versionar `entorno/.env`, claves ni datos de PostgreSQL.
 - Los backups locales en `backups/` no se versionan por defecto.
 - Los paquetes cifrados de `git-transfer/` quedan visibles para Git, pero tu decides cuando hacer commit y push.
 - La clave temporal debe ir por otro canal, no por Git.

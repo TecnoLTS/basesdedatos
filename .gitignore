@@ -1,6 +1,12 @@
 .env
 .env.*
-!.env.example
+entorno/.env
+entorno/.env.*
+!entorno/.env.example
+entorno/servidor.env
+entorno/certs/
+entorno/.secrets/
+entorno/certbot/
 *.sql.enc
 *.sql.enc.sha256
 backups/**

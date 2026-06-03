@@ -5,6 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BACKUP_FILE="${BACKUP_FILE:-}"
 DATA_DIR="${DATA_DIR:-${APP_DIR}/postgres18_data}"
+ENTORNO_DIR="${APP_DIR}/entorno"
+ENTORNO_ENV_FILE="${ENTORNO_DIR}/.env"
+ENTORNO_SERVER_FILE="${ENTORNO_DIR}/servidor.env"
 
 valid_mode() {
   local mode="$1"
@@ -124,8 +127,8 @@ default_mode() {
     return 0
   fi
 
-  if [[ -f "${APP_DIR}/.env" ]]; then
-    mode="$(env_value_from_file "${APP_DIR}/.env" DB_ENV)"
+  if [[ -f "${ENTORNO_SERVER_FILE}" ]]; then
+    mode="$(env_value_from_file "${ENTORNO_SERVER_FILE}" ENTORNO_MODE)"
     if valid_mode "${mode}"; then
       printf '%s\n' "${mode}"
       return 0
@@ -202,28 +205,59 @@ path.write_text("\n".join(lines) + "\n")
 PY
 }
 
+ensure_entorno_files() {
+  local created=0
+
+  mkdir -p "${ENTORNO_DIR}"
+
+  if [[ ! -f "${ENTORNO_ENV_FILE}" ]]; then
+    if [[ ! -f "${ENTORNO_DIR}/.env.example" ]]; then
+      echo "No se encontro ${ENTORNO_DIR}/.env.example" >&2
+      exit 1
+    fi
+    cp "${ENTORNO_DIR}/.env.example" "${ENTORNO_ENV_FILE}"
+    chmod 600 "${ENTORNO_ENV_FILE}"
+    echo "Se creo ${ENTORNO_ENV_FILE} desde entorno/.env.example."
+    created=1
+  fi
+
+  if [[ ! -f "${ENTORNO_SERVER_FILE}" ]]; then
+    if [[ ! -f "${ENTORNO_DIR}/servidor.env.example" ]]; then
+      echo "No se encontro ${ENTORNO_DIR}/servidor.env.example" >&2
+      exit 1
+    fi
+    cp "${ENTORNO_DIR}/servidor.env.example" "${ENTORNO_SERVER_FILE}"
+    chmod 600 "${ENTORNO_SERVER_FILE}"
+    echo "Se creo ${ENTORNO_SERVER_FILE} desde entorno/servidor.env.example."
+    created=1
+  fi
+
+  if [[ "${created}" == "1" ]]; then
+    echo "Completa valores reales en entorno/.env y verifica ENTORNO_MODE en entorno/servidor.env antes de desplegar." >&2
+    exit 1
+  fi
+}
+
+assert_entorno_mode() {
+  local expected="$1"
+  local actual
+
+  actual="$(env_value_from_file "${ENTORNO_SERVER_FILE}" ENTORNO_MODE)"
+
+  if [[ "${actual}" != "${expected}" ]]; then
+    echo "ENTORNO_MODE=${actual:-<vacio>} en ${ENTORNO_SERVER_FILE}; esperado ${expected}." >&2
+    exit 1
+  fi
+}
+
 resolve_env_file() {
   local mode="${1:-production}"
+  local env_file="${ENTORNO_ENV_FILE}"
   require_valid_mode "${mode}"
+  ensure_entorno_files
+  assert_entorno_mode "${mode}"
 
   if [[ "${mode}" == "development" ]]; then
-    local env_file="${APP_DIR}/.env.development"
-    if [[ ! -f "${env_file}" ]]; then
-      if [[ -f "${APP_DIR}/.env.development.example" ]]; then
-        cp "${APP_DIR}/.env.development.example" "${env_file}"
-        echo "Se creo ${env_file} desde .env.development.example."
-      elif [[ -f "${APP_DIR}/.env" ]]; then
-        cp "${APP_DIR}/.env" "${env_file}"
-        echo "Se creo ${env_file} desde .env para separar desarrollo de produccion."
-      elif [[ -f "${APP_DIR}/.env.example" ]]; then
-        cp "${APP_DIR}/.env.example" "${env_file}"
-        echo "Se creo ${env_file} desde .env.example."
-      else
-        echo "No se encontro .env, .env.development.example ni .env.example en ${APP_DIR}" >&2
-        exit 1
-      fi
-    fi
-
     upsert_env_value "${env_file}" "POSTGRES_BIND_IP" "127.0.0.1"
     upsert_env_value "${env_file}" "DB_ENV" "development"
     upsert_env_value "${env_file}" "POSTGRES_DATA_DIR" "$(default_data_dir_for_mode "${mode}")"
@@ -232,24 +266,10 @@ resolve_env_file() {
     return 0
   fi
 
-  if [[ -f "${APP_DIR}/.env" ]]; then
-    upsert_env_value "${APP_DIR}/.env" "DB_ENV" "production"
-    upsert_env_value "${APP_DIR}/.env" "POSTGRES_DATA_DIR" "$(default_data_dir_for_mode "${mode}")"
-    printf '%s\n' "${APP_DIR}/.env"
-    return 0
-  fi
-
-  if [[ -f "${APP_DIR}/.env.example" ]]; then
-    cp "${APP_DIR}/.env.example" "${APP_DIR}/.env"
-    echo "Se creo ${APP_DIR}/.env desde .env.example. Ajusta credenciales si hace falta."
-    upsert_env_value "${APP_DIR}/.env" "DB_ENV" "production"
-    upsert_env_value "${APP_DIR}/.env" "POSTGRES_DATA_DIR" "$(default_data_dir_for_mode "${mode}")"
-    printf '%s\n' "${APP_DIR}/.env"
-    return 0
-  fi
-
-  echo "No se encontro .env ni .env.example en ${APP_DIR}" >&2
-  exit 1
+  upsert_env_value "${env_file}" "DB_ENV" "production"
+  upsert_env_value "${env_file}" "POSTGRES_DATA_DIR" "$(default_data_dir_for_mode "${mode}")"
+  printf '%s\n' "${env_file}"
+  return 0
 }
 
 load_env_file() {
@@ -361,11 +381,7 @@ sync_backend_runtime_role() {
 
   require_valid_mode "${mode}"
 
-  if [[ "${mode}" == "development" ]]; then
-    backend_env_file="${APP_DIR}/../paramascotasec-backend/.env.development"
-  else
-    backend_env_file="${APP_DIR}/../paramascotasec-backend/.env"
-  fi
+  backend_env_file="${APP_DIR}/../paramascotasec-backend/entorno/.env"
 
   if [[ ! -f "${backend_env_file}" ]]; then
     echo "Aviso: no se encontro ${backend_env_file}; omitiendo ajuste del rol runtime del backend."
