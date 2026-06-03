@@ -18,7 +18,8 @@ while [[ $# -gt 0 ]]; do
       ASSUME_YES=1
       ;;
     --help|-h)
-      echo "Uso: $0 [production|development] [ruta-backup.sql.enc] [--yes]"
+      echo "Uso: $0 [production|development] [ruta-backup.sql.enc|directorio-backups] [--yes]"
+      echo "Si no indicas archivo, se restaura el .sql.enc mas reciente de backups/."
       exit 0
       ;;
     *)
@@ -43,13 +44,16 @@ BACKUP_PASSPHRASE="${BACKUP_DECRYPTION_PASSPHRASE:-}"
 if [[ -z "${BACKUP_FILE}" ]]; then
   if [[ -n "${BACKUP_FILE_ARG}" ]]; then
     BACKUP_FILE="$(absolute_app_path "${BACKUP_FILE_ARG}")"
+    if [[ -d "${BACKUP_FILE}" ]]; then
+      BACKUP_FILE="$(latest_backup_file_in_dir "${BACKUP_FILE}")"
+    fi
   else
-    BACKUP_FILE="$(latest_backup_file_for_mode "${MODE}")"
+    BACKUP_FILE="$(latest_local_backup_file)"
   fi
 fi
 
-if [[ ! -f "${BACKUP_FILE}" ]]; then
-  echo "No existe el snapshot ${BACKUP_FILE}. Ejecuta primero ./scripts/backup-and-stop.sh ${MODE}" >&2
+if [[ -z "${BACKUP_FILE}" || ! -f "${BACKUP_FILE}" ]]; then
+  echo "No existe un snapshot para restaurar. Ejecuta primero ./scripts/backup-and-stop.sh production o development." >&2
   exit 1
 fi
 

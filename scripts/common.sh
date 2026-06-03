@@ -66,6 +66,51 @@ latest_backup_file_for_mode() {
   printf '%s/latest.sql.enc\n' "$(backup_dir_for_mode "${mode}")"
 }
 
+latest_backup_file_in_dir() {
+  local backup_dir="$1"
+  local latest_file
+
+  latest_file="$(
+    find "${backup_dir}" -maxdepth 1 -type f -name '*.sql.enc' ! -name 'latest.sql.enc' -printf '%T@ %p\n' 2>/dev/null \
+      | sort -nr \
+      | awk 'NR == 1 {print $2}'
+  )"
+
+  if [[ -n "${latest_file}" ]]; then
+    printf '%s\n' "${latest_file}"
+    return 0
+  fi
+
+  if [[ -f "${backup_dir}/latest.sql.enc" || -L "${backup_dir}/latest.sql.enc" ]]; then
+    printf '%s\n' "${backup_dir}/latest.sql.enc"
+  fi
+}
+
+latest_local_backup_file() {
+  local latest_file
+
+  latest_file="$(
+    find "${APP_DIR}/backups" -mindepth 2 -maxdepth 2 -type f -name '*.sql.enc' ! -name 'latest.sql.enc' -printf '%T@ %p\n' 2>/dev/null \
+      | sort -nr \
+      | awk 'NR == 1 {print $2}'
+  )"
+
+  if [[ -n "${latest_file}" ]]; then
+    printf '%s\n' "${latest_file}"
+    return 0
+  fi
+
+  latest_file="$(
+    find "${APP_DIR}/backups" -mindepth 2 -maxdepth 2 \( -type f -o -type l \) -name 'latest.sql.enc' -printf '%T@ %p\n' 2>/dev/null \
+      | sort -nr \
+      | awk 'NR == 1 {print $2}'
+  )"
+
+  if [[ -n "${latest_file}" ]]; then
+    printf '%s\n' "${latest_file}"
+  fi
+}
+
 running_db_env() {
   docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' next-test-db 2>/dev/null | awk -F= '/^DB_ENV=/{print $2; exit}' || true
 }
