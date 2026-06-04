@@ -8,6 +8,7 @@ DATA_DIR="${DATA_DIR:-${APP_DIR}/postgres18_data}"
 ENTORNO_DIR="${APP_DIR}/entorno"
 ENTORNO_ENV_FILE="${ENTORNO_DIR}/.env"
 ENTORNO_SERVER_FILE="${ENTORNO_DIR}/servidor.env"
+TEMPLATE_ENTORNO_DIR="${APP_DIR}/templates/entorno"
 
 valid_mode() {
   local mode="$1"
@@ -211,29 +212,49 @@ ensure_entorno_files() {
   mkdir -p "${ENTORNO_DIR}"
 
   if [[ ! -f "${ENTORNO_ENV_FILE}" ]]; then
-    if [[ ! -f "${ENTORNO_DIR}/.env.example" ]]; then
-      echo "No se encontro ${ENTORNO_DIR}/.env.example" >&2
+    if [[ ! -f "${TEMPLATE_ENTORNO_DIR}/.env.example" ]]; then
+      echo "No se encontro ${TEMPLATE_ENTORNO_DIR}/.env.example" >&2
       exit 1
     fi
-    cp "${ENTORNO_DIR}/.env.example" "${ENTORNO_ENV_FILE}"
+    cp "${TEMPLATE_ENTORNO_DIR}/.env.example" "${ENTORNO_ENV_FILE}"
     chmod 600 "${ENTORNO_ENV_FILE}"
-    echo "Se creo ${ENTORNO_ENV_FILE} desde entorno/.env.example."
+    echo "Se creo ${ENTORNO_ENV_FILE} desde templates/entorno/.env.example."
     created=1
   fi
 
   if [[ ! -f "${ENTORNO_SERVER_FILE}" ]]; then
-    if [[ ! -f "${ENTORNO_DIR}/servidor.env.example" ]]; then
-      echo "No se encontro ${ENTORNO_DIR}/servidor.env.example" >&2
+    if [[ ! -f "${TEMPLATE_ENTORNO_DIR}/servidor.env.example" ]]; then
+      echo "No se encontro ${TEMPLATE_ENTORNO_DIR}/servidor.env.example" >&2
       exit 1
     fi
-    cp "${ENTORNO_DIR}/servidor.env.example" "${ENTORNO_SERVER_FILE}"
+    cp "${TEMPLATE_ENTORNO_DIR}/servidor.env.example" "${ENTORNO_SERVER_FILE}"
     chmod 600 "${ENTORNO_SERVER_FILE}"
-    echo "Se creo ${ENTORNO_SERVER_FILE} desde entorno/servidor.env.example."
+    echo "Se creo ${ENTORNO_SERVER_FILE} desde templates/entorno/servidor.env.example."
     created=1
   fi
 
   if [[ "${created}" == "1" ]]; then
     echo "Completa valores reales en entorno/.env y verifica ENTORNO_MODE en entorno/servidor.env antes de desplegar." >&2
+    exit 1
+  fi
+}
+
+assert_no_legacy_runtime_paths() {
+  local env_name=".env"
+  local suffix
+  local found=()
+  local path
+
+  for suffix in "" ".development" ".production" ".local"; do
+    path="${APP_DIR}/${env_name}${suffix}"
+    if [[ -e "${path}" ]]; then
+      found+=("${path#${APP_DIR}/}")
+    fi
+  done
+
+  if (( ${#found[@]} > 0 )); then
+    printf 'Rutas legacy fuera de entorno/ detectadas en paramascotasec-DB: %s\n' "${found[*]}" >&2
+    printf 'Ejecuta scripts/migrate-entorno.sh o mueve esos archivos a un backup externo antes de desplegar.\n' >&2
     exit 1
   fi
 }
@@ -254,6 +275,7 @@ resolve_env_file() {
   local mode="${1:-production}"
   local env_file="${ENTORNO_ENV_FILE}"
   require_valid_mode "${mode}"
+  assert_no_legacy_runtime_paths
   ensure_entorno_files
   assert_entorno_mode "${mode}"
 
@@ -340,6 +362,7 @@ deploy_database() {
   compose_cmd "${env_file}" up -d --force-recreate --remove-orphans db
   wait_for_db "${env_file}"
   assert_db_mode "${mode}"
+  sync_backend_runtime_role "${mode}" "${env_file}"
   compose_cmd "${env_file}" ps
   echo "Base de datos ${mode} lista"
 }

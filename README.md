@@ -11,6 +11,7 @@ Servicio PostgreSQL compartido por los microservicios de Paramascotas EC.
 - Desarrollo usa `entorno/.env`, `entorno/servidor.env` y `postgres18_development_data`
 - Los datos y archivos `entorno/.env` no se versionan en Git
 - Los backups cifrados pueden versionarse solo como paquetes temporales de transferencia
+- Las plantillas versionadas viven en `templates/entorno/.env.example` y `templates/entorno/servidor.env.example`
 
 Este proyecto usa un solo `container_name` (`next-test-db`) y un solo puerto. Por eso production y development no corren al mismo tiempo en el mismo host; los scripts recrean el contenedor apuntando al directorio de datos del ambiente elegido.
 
@@ -120,6 +121,7 @@ docker exec paramascotasec-backend-web wget -q -O /dev/null http://127.0.0.1:808
 ## Seguridad Operativa
 
 - No versionar `entorno/.env`, claves ni datos de PostgreSQL.
+- `entorno/` solo contiene archivos reales del servidor; plantillas y documentacion van fuera.
 - Los backups locales en `backups/` no se versionan por defecto.
 - Los paquetes cifrados de `git-transfer/` quedan visibles para Git, pero tu decides cuando hacer commit y push.
 - La clave temporal debe ir por otro canal, no por Git.
