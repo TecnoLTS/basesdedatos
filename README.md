@@ -7,11 +7,11 @@ Servicio PostgreSQL compartido por los microservicios de Paramascotas EC.
 - PostgreSQL: `18.4`
 - Imagen Docker: `postgres:18.4-alpine3.23`
 - `PGDATA`: `/var/lib/postgresql/18/docker`
-- Produccion usa `entorno/.env`, `entorno/servidor.env` y `postgres18_data`
-- Desarrollo usa `entorno/.env`, `entorno/servidor.env` y `postgres18_development_data`
+- Produccion usa `entorno/.env` y `postgres18_data`
+- Desarrollo usa `entorno/.env` y `postgres18_development_data`
 - Los datos y archivos `entorno/.env` no se versionan en Git
 - Los backups cifrados pueden versionarse solo como paquetes temporales de transferencia
-- Las plantillas versionadas viven en `templates/entorno/.env.example` y `templates/entorno/servidor.env.example`
+- La plantilla versionada vive en `templates/entorno/.env.example`
 
 Este proyecto usa un solo `container_name` (`next-test-db`) y un solo puerto. Por eso production y development no corren al mismo tiempo en el mismo host; los scripts recrean el contenedor apuntando al directorio de datos del ambiente elegido.
 

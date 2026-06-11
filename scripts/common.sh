@@ -7,7 +7,6 @@ BACKUP_FILE="${BACKUP_FILE:-}"
 DATA_DIR="${DATA_DIR:-${APP_DIR}/postgres18_data}"
 ENTORNO_DIR="${APP_DIR}/entorno"
 ENTORNO_ENV_FILE="${ENTORNO_DIR}/.env"
-ENTORNO_SERVER_FILE="${ENTORNO_DIR}/servidor.env"
 TEMPLATE_ENTORNO_DIR="${APP_DIR}/templates/entorno"
 
 valid_mode() {
@@ -128,8 +127,8 @@ default_mode() {
     return 0
   fi
 
-  if [[ -f "${ENTORNO_SERVER_FILE}" ]]; then
-    mode="$(env_value_from_file "${ENTORNO_SERVER_FILE}" ENTORNO_MODE)"
+  if [[ -f "${ENTORNO_ENV_FILE}" ]]; then
+    mode="$(env_value_from_file "${ENTORNO_ENV_FILE}" ENTORNO_MODE)"
     if valid_mode "${mode}"; then
       printf '%s\n' "${mode}"
       return 0
@@ -149,13 +148,19 @@ env_value_from_file() {
   local env_file="$1"
   local key="$2"
 
-  (
-    set -a
-    # shellcheck disable=SC1090
-    source "${env_file}"
-    set +a
-    printf '%s\n' "${!key:-}"
-  )
+  awk -v target="${key}" -F= '
+    $0 !~ /^[[:space:]]*#/ && $1 == target {
+      value = substr($0, index($0, "=") + 1)
+      sub(/\r$/, "", value)
+      sub(/^[[:space:]]+/, "", value)
+      sub(/[[:space:]]+$/, "", value)
+      if ((value ~ /^".*"$/) || (value ~ /^'\''.*'\''$/)) {
+        value = substr(value, 2, length(value) - 2)
+      }
+      print value
+      exit
+    }
+  ' "${env_file}" 2>/dev/null || true
 }
 
 ensure_prereqs() {
@@ -222,19 +227,8 @@ ensure_entorno_files() {
     created=1
   fi
 
-  if [[ ! -f "${ENTORNO_SERVER_FILE}" ]]; then
-    if [[ ! -f "${TEMPLATE_ENTORNO_DIR}/servidor.env.example" ]]; then
-      echo "No se encontro ${TEMPLATE_ENTORNO_DIR}/servidor.env.example" >&2
-      exit 1
-    fi
-    cp "${TEMPLATE_ENTORNO_DIR}/servidor.env.example" "${ENTORNO_SERVER_FILE}"
-    chmod 600 "${ENTORNO_SERVER_FILE}"
-    echo "Se creo ${ENTORNO_SERVER_FILE} desde templates/entorno/servidor.env.example."
-    created=1
-  fi
-
   if [[ "${created}" == "1" ]]; then
-    echo "Completa valores reales en entorno/.env y verifica ENTORNO_MODE en entorno/servidor.env antes de desplegar." >&2
+    echo "Completa valores reales y ENTORNO_MODE en entorno/.env antes de desplegar." >&2
     exit 1
   fi
 }
@@ -263,10 +257,10 @@ assert_entorno_mode() {
   local expected="$1"
   local actual
 
-  actual="$(env_value_from_file "${ENTORNO_SERVER_FILE}" ENTORNO_MODE)"
+  actual="$(env_value_from_file "${ENTORNO_ENV_FILE}" ENTORNO_MODE)"
 
   if [[ "${actual}" != "${expected}" ]]; then
-    echo "ENTORNO_MODE=${actual:-<vacio>} en ${ENTORNO_SERVER_FILE}; esperado ${expected}." >&2
+    echo "ENTORNO_MODE=${actual:-<vacio>} en ${ENTORNO_ENV_FILE}; esperado ${expected}." >&2
     exit 1
   fi
 }
