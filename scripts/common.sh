@@ -8,6 +8,7 @@ DATA_DIR="${DATA_DIR:-${APP_DIR}/postgres18_data}"
 ENTORNO_DIR="${APP_DIR}/entorno"
 ENTORNO_ENV_FILE="${ENTORNO_DIR}/.env"
 TEMPLATE_ENTORNO_DIR="${APP_DIR}/templates/entorno"
+MODULE_DATABASES_REGISTRY_FILE="${APP_DIR}/config/module-databases.json"
 
 valid_mode() {
   local mode="$1"
@@ -43,6 +44,43 @@ absolute_app_path() {
   else
     printf '%s\n' "${APP_DIR}/${path#./}"
   fi
+}
+
+safe_identifier() {
+  local value="$1"
+  [[ "${value}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+}
+
+module_database_specs() {
+  python3 - "$MODULE_DATABASES_REGISTRY_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], 'r', encoding='utf-8') as fh:
+    registry = json.load(fh)
+
+for entry in registry.get('databases', []):
+    roles = []
+    runtime_role = entry.get('runtimeRole') or {}
+    if runtime_role:
+        roles.append(('true', runtime_role))
+    for role in entry.get('additionalRuntimeRoles') or []:
+        if role:
+            roles.append(('false', role))
+
+    for owner_flag, role in roles:
+        print('\t'.join([
+            entry.get('moduleKey', ''),
+            entry.get('databaseName', ''),
+            role.get('source', ''),
+            'true' if role.get('optional', False) else 'false',
+            role.get('envFile', ''),
+            role.get('databaseKey', ''),
+            role.get('usernameKey', ''),
+            role.get('passwordKey', ''),
+            owner_flag,
+        ]))
+PY
 }
 
 backup_dir_for_mode() {
@@ -306,6 +344,181 @@ load_env_file() {
   export POSTGRES_DATA_DIR DATA_DIR
 }
 
+create_database_if_missing() {
+  local env_file="$1"
+  local database_name="$2"
+  local owner_role="${3:-}"
+  local exists
+
+  if ! safe_identifier "${database_name}"; then
+    echo "Nombre de base de datos inseguro: ${database_name}" >&2
+    exit 1
+  fi
+
+  exists="$(
+    compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+      psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '${database_name}'"
+  )"
+
+  if [[ "${exists}" == "1" ]]; then
+    return 0
+  fi
+
+  if [[ -n "${owner_role}" ]]; then
+    compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+      psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 <<SQL >/dev/null
+CREATE DATABASE "${database_name}" OWNER "${owner_role}";
+SQL
+    return 0
+  fi
+
+  compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+    psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 <<SQL >/dev/null
+CREATE DATABASE "${database_name}";
+SQL
+}
+
+ensure_database_role() {
+  local env_file="$1"
+  local role_name="$2"
+  local role_password="$3"
+  local role_exists
+
+  if ! safe_identifier "${role_name}"; then
+    echo "Nombre de rol inseguro: ${role_name}" >&2
+    exit 1
+  fi
+
+  role_exists="$(
+    compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+      psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname = '${role_name}'"
+  )"
+
+  if [[ "${role_exists}" == "1" ]]; then
+    compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+      psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 -v role_password="${role_password}" <<SQL >/dev/null
+ALTER ROLE "${role_name}" WITH LOGIN PASSWORD :'role_password';
+SQL
+    return 0
+  fi
+
+  compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+    psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 -v role_password="${role_password}" <<SQL >/dev/null
+CREATE ROLE "${role_name}" WITH LOGIN PASSWORD :'role_password';
+SQL
+}
+
+grant_database_access() {
+  local env_file="$1"
+  local database_name="$2"
+  local role_name="$3"
+  local owner_flag="${4:-true}"
+
+  if ! safe_identifier "${database_name}" || ! safe_identifier "${role_name}"; then
+    echo "No se pueden aplicar grants por identificadores inseguros: ${database_name}/${role_name}" >&2
+    exit 1
+  fi
+
+  compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+    psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 <<SQL >/dev/null
+$(if [[ "${owner_flag}" == "true" ]]; then printf 'ALTER DATABASE "%s" OWNER TO "%s";\n' "${database_name}" "${role_name}"; fi)
+GRANT CONNECT ON DATABASE "${database_name}" TO "${role_name}";
+SQL
+
+  compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+    psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d "${database_name}" -v ON_ERROR_STOP=1 <<SQL >/dev/null
+CREATE EXTENSION IF NOT EXISTS postgres_fdw;
+GRANT USAGE ON FOREIGN DATA WRAPPER postgres_fdw TO "${role_name}";
+GRANT USAGE, CREATE ON SCHEMA public TO "${role_name}";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "${role_name}";
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO "${role_name}";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${role_name}";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO "${role_name}";
+SQL
+}
+
+sync_module_databases() {
+  local env_file="$1"
+  local module_key database_name role_source optional_flag role_env_ref db_key user_key password_key owner_flag
+  local runtime_env_file declared_database runtime_user runtime_password optional
+  local spec
+  local -a module_specs=()
+
+  if [[ ! -f "${MODULE_DATABASES_REGISTRY_FILE}" ]]; then
+    echo "No existe el registro de bases por modulo: ${MODULE_DATABASES_REGISTRY_FILE}" >&2
+    exit 1
+  fi
+
+  mapfile -t module_specs < <(module_database_specs)
+
+  for spec in "${module_specs[@]}"; do
+    IFS=$'\t' read -r module_key database_name role_source optional_flag role_env_ref db_key user_key password_key owner_flag <<< "${spec}"
+    [[ -n "${module_key}" ]] || continue
+    optional="${optional_flag:-false}"
+    owner_flag="${owner_flag:-true}"
+    runtime_env_file=""
+    declared_database="${database_name}"
+    runtime_user=""
+    runtime_password=""
+
+    case "${role_source}" in
+      env-file)
+        runtime_env_file="$(absolute_app_path "${role_env_ref}")"
+        if [[ ! -f "${runtime_env_file}" ]]; then
+          if [[ "${optional}" == "true" ]]; then
+            echo "Aviso: falta ${runtime_env_file}; se crea ${database_name} sin rol runtime para ${module_key}."
+            create_database_if_missing "${env_file}" "${database_name}"
+            continue
+          fi
+          echo "Falta ${runtime_env_file} para sincronizar ${module_key}." >&2
+          exit 1
+        fi
+        declared_database="$(env_value_from_file "${runtime_env_file}" "${db_key}")"
+        declared_database="${declared_database:-${database_name}}"
+        runtime_user="$(env_value_from_file "${runtime_env_file}" "${user_key}")"
+        runtime_password="$(env_value_from_file "${runtime_env_file}" "${password_key}")"
+        ;;
+      db-env)
+        runtime_user="$(env_value_from_file "${env_file}" "${user_key}")"
+        runtime_password="$(env_value_from_file "${env_file}" "${password_key}")"
+        ;;
+      "")
+        ;;
+      *)
+        echo "Fuente de rol no soportada para ${module_key}: ${role_source}" >&2
+        exit 1
+        ;;
+    esac
+
+    if ! safe_identifier "${declared_database}"; then
+      echo "Database declarada para ${module_key} no es segura: ${declared_database}" >&2
+      exit 1
+    fi
+
+    if [[ -n "${runtime_user}" ]] && ! safe_identifier "${runtime_user}"; then
+      echo "Rol runtime para ${module_key} no es seguro: ${runtime_user}" >&2
+      exit 1
+    fi
+
+    if [[ -n "${runtime_user}" && -n "${runtime_password}" ]]; then
+      ensure_database_role "${env_file}" "${runtime_user}" "${runtime_password}"
+      create_database_if_missing "${env_file}" "${declared_database}" "${runtime_user}"
+      grant_database_access "${env_file}" "${declared_database}" "${runtime_user}" "${owner_flag}"
+      echo "Sincronizada DB ${declared_database} para ${module_key} con rol ${runtime_user}."
+      continue
+    fi
+
+    if [[ "${optional}" == "true" ]]; then
+      create_database_if_missing "${env_file}" "${declared_database}"
+      echo "Sincronizada DB ${declared_database} para ${module_key} sin rol runtime aun."
+      continue
+    fi
+
+    echo "Faltan credenciales runtime para ${module_key} (${declared_database})." >&2
+    exit 1
+  done
+}
+
 assert_db_mode() {
   local mode="${1:-production}"
   local container_env
@@ -356,7 +569,7 @@ deploy_database() {
   compose_cmd "${env_file}" up -d --force-recreate --remove-orphans db
   wait_for_db "${env_file}"
   assert_db_mode "${mode}"
-  sync_backend_runtime_role "${mode}" "${env_file}"
+  sync_module_databases "${env_file}"
   compose_cmd "${env_file}" ps
   echo "Base de datos ${mode} lista"
 }
@@ -390,63 +603,7 @@ decrypt_backup_stream() {
 sync_backend_runtime_role() {
   local mode="$1"
   local env_file="$2"
-  local backend_env_file
-  local backend_db_name
-  local backend_db_user
-  local backend_db_password
-  local role_exists
 
   require_valid_mode "${mode}"
-
-  backend_env_file="${APP_DIR}/../paramascotasec-backend/entorno/.env"
-
-  if [[ ! -f "${backend_env_file}" ]]; then
-    echo "Aviso: no se encontro ${backend_env_file}; omitiendo ajuste del rol runtime del backend."
-    return 0
-  fi
-
-  backend_db_name="$(env_value_from_file "${backend_env_file}" DB_DATABASE)"
-  backend_db_user="$(env_value_from_file "${backend_env_file}" DB_USERNAME)"
-  backend_db_password="$(env_value_from_file "${backend_env_file}" DB_PASSWORD)"
-
-  if [[ -z "${backend_db_name}" || -z "${backend_db_user}" || -z "${backend_db_password}" ]]; then
-    echo "Aviso: faltan DB_DATABASE, DB_USERNAME o DB_PASSWORD en ${backend_env_file}; omitiendo ajuste del rol runtime del backend."
-    return 0
-  fi
-
-  if [[ ! "${backend_db_name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ || ! "${backend_db_user}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-    echo "Nombre de DB o rol backend no seguro para ajustar automaticamente: ${backend_db_name}/${backend_db_user}" >&2
-    exit 1
-  fi
-
-  echo "Alineando rol runtime del backend para ${backend_db_name}..."
-
-  role_exists="$(
-    compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
-      psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname = '${backend_db_user}'"
-  )"
-
-  if [[ "${role_exists}" == "1" ]]; then
-    compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
-      psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 -v backend_db_password="${backend_db_password}" >/dev/null <<SQL
-ALTER ROLE "${backend_db_user}" WITH LOGIN PASSWORD :'backend_db_password';
-SQL
-  else
-    compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
-      psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 -v backend_db_password="${backend_db_password}" >/dev/null <<SQL
-CREATE ROLE "${backend_db_user}" WITH LOGIN PASSWORD :'backend_db_password';
-SQL
-  fi
-
-  compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
-    psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 >/dev/null <<SQL
-GRANT CONNECT ON DATABASE "${backend_db_name}" TO "${backend_db_user}";
-SQL
-
-  compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
-    psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d "${backend_db_name}" -v ON_ERROR_STOP=1 >/dev/null <<SQL
-GRANT USAGE ON SCHEMA public TO "${backend_db_user}";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "${backend_db_user}";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "${backend_db_user}";
-SQL
+  sync_module_databases "${env_file}"
 }

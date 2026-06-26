@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "sharedService": {
+    "container": "next-test-db",
+    "networkAlias": "db",
+    "engine": "PostgreSQL 18.4"
+  },
+  "databases": [
+    {
+      "moduleKey": "platform-core",
+      "databaseName": "paramascotasec",
+      "runtimeRole": {
+        "source": "env-file",
+        "envFile": "../paramascotasec-backend/entorno/.env",
+        "databaseKey": "DB_DATABASE",
+        "usernameKey": "DB_USERNAME",
+        "passwordKey": "DB_PASSWORD",
+        "optional": false
+      }
+    },
+    {
+      "moduleKey": "identity-platform",
+      "databaseName": "identity_platform",
+      "runtimeRole": {
+        "source": "env-file",
+        "envFile": "../paramascotasec-backend/entorno/.env",
+        "databaseKey": "DB_DATABASE_IDENTITY_PLATFORM",
+        "usernameKey": "DB_USERNAME",
+        "passwordKey": "DB_PASSWORD",
+        "optional": false
+      }
+    },
+    {
+      "moduleKey": "catalog-inventory",
+      "databaseName": "catalog_inventory",
+      "runtimeRole": {
+        "source": "env-file",
+        "envFile": "../paramascotasec-backend/entorno/.env",
+        "databaseKey": "DB_DATABASE_CATALOG_INVENTORY",
+        "usernameKey": "DB_USERNAME",
+        "passwordKey": "DB_PASSWORD",
+        "optional": false
+      }
+    },
+    {
+      "moduleKey": "commerce",
+      "databaseName": "commerce_orders",
+      "runtimeRole": {
+        "source": "env-file",
+        "envFile": "../paramascotasec-backend/entorno/.env",
+        "databaseKey": "DB_DATABASE_COMMERCE",
+        "usernameKey": "DB_USERNAME",
+        "passwordKey": "DB_PASSWORD",
+        "optional": false
+      }
+    },
+    {
+      "moduleKey": "reporting-finance",
+      "databaseName": "reporting_finance",
+      "runtimeRole": {
+        "source": "env-file",
+        "envFile": "../paramascotasec-backend/entorno/.env",
+        "databaseKey": "DB_DATABASE_REPORTING_FINANCE",
+        "usernameKey": "DB_USERNAME",
+        "passwordKey": "DB_PASSWORD",
+        "optional": false
+      }
+    },
+    {
+      "moduleKey": "billing-sri",
+      "databaseName": "billing_service",
+      "runtimeRole": {
+        "source": "env-file",
+        "envFile": "../paramascotasec-backend/entorno/.env",
+        "databaseKey": "DB_DATABASE_BILLING",
+        "usernameKey": "DB_USERNAME",
+        "passwordKey": "DB_PASSWORD",
+        "optional": false
+      }
+    },
+    {
+      "moduleKey": "mailer-service",
+      "databaseName": "mailer_service",
+      "runtimeRole": {
+        "source": "env-file",
+        "envFile": "../paramascotasec-backend/entorno/.env",
+        "databaseKey": "DB_DATABASE_MAILER_SERVICE",
+        "usernameKey": "DB_USERNAME",
+        "passwordKey": "DB_PASSWORD",
+        "optional": false
+      }
+    }
+  ]
+}
