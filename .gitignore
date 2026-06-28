@@ -3,11 +3,11 @@
 entorno/**
 !templates/entorno/.env.example
 !templates/entorno/servidor.env.example
-*.sql.enc
-*.sql.enc.sha256
-backups/**
-!backups/
-!backups/.gitkeep
+#*.sql.enc
+#*.sql.enc.sha256
+#backups/**
+#!backups/
+#!backups/.gitkeep
 git-transfer/*
 !git-transfer/
 !git-transfer/.gitkeep
