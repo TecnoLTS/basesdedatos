@@ -8,11 +8,13 @@ source "${SCRIPT_DIR}/common.sh"
 umask 077
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  echo "Uso: $0 [production|development] [ruta-backup.sql.enc]"
+  echo "Uso: $0 [qa|production] [ruta-backup.sql.enc]"
   exit 0
 fi
 
-MODE="${1:-production}"
+MODE="${1:-$(default_mode)}"
+require_valid_mode "${MODE}"
+MODE="$(canonical_env_mode "${MODE}")"
 BACKUP_FILE_ARG="${2:-}"
 ENV_FILE="$(resolve_env_file "${MODE}")"
 

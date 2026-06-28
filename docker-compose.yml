@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:18.4-alpine3.23
-    container_name: next-test-db
+    container_name: basesdedatos
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?Define POSTGRES_USER en entorno/.env}
@@ -34,4 +34,4 @@ services:
 networks:
   db_internal:
     external: true
-    name: paramascotasec-db-internal
+    name: basesdedatos-internal

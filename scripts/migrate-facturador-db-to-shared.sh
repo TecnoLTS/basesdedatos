@@ -5,10 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./common.sh
 source "${SCRIPT_DIR}/common.sh"
 
-MODE="${1:-development}"
+MODE="${1:-qa}"
 SOURCE_CONTAINER="${SOURCE_CONTAINER:-billing-postgres}"
 FACT_ENV_FILE="${APP_DIR}/../Facturador/entorno/.env"
-SHARED_DB_CONTAINER="${SHARED_DB_CONTAINER:-next-test-db}"
+SHARED_DB_CONTAINER="${SHARED_DB_CONTAINER:-basesdedatos}"
 
 require_valid_mode "${MODE}"
 ensure_prereqs

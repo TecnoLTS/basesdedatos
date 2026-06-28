@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/common.sh"
 
 usage() {
   cat <<'USAGE'
-Uso: ./scripts/export-for-git.sh <production|development> [etiqueta-destino]
+Uso: ./scripts/export-for-git.sh <qa|production> [etiqueta-destino]
 
 Genera un backup cifrado con una clave temporal distinta a la clave normal del
 ambiente. El backup queda en git-transfer/ para que Git detecte el cambio. La
@@ -23,7 +23,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   exit 0
 fi
 
-MODE="${1:-production}"
+MODE="${1:-$(default_mode)}"
 if [[ $# -gt 0 ]]; then
   shift
 fi
@@ -49,6 +49,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 require_valid_mode "${MODE}"
+MODE="$(canonical_env_mode "${MODE}")"
 ensure_prereqs
 
 TIMESTAMP="$(timestamp_utc)"

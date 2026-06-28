@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/common.sh"
 
 usage() {
   cat <<'USAGE'
-Uso: ./scripts/import-from-git-transfer.sh <production|development> <git-transfer/backup.sql.enc> [--yes]
+Uso: ./scripts/import-from-git-transfer.sh <qa|production> <git-transfer/backup.sql.enc> [--yes]
 
 Restaura un backup cifrado que llego por Git. Verifica el .sha256 si existe y
 pide la clave temporal fuera del repo.
@@ -48,6 +48,7 @@ if [[ -z "${TARGET_MODE}" || -z "${BACKUP_ARG}" ]]; then
 fi
 
 require_valid_mode "${TARGET_MODE}"
+TARGET_MODE="$(canonical_env_mode "${TARGET_MODE}")"
 BACKUP_PATH="$(absolute_app_path "${BACKUP_ARG}")"
 
 if [[ ! -f "${BACKUP_PATH}" ]]; then

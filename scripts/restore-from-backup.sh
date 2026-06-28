@@ -5,20 +5,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./common.sh
 source "${SCRIPT_DIR}/common.sh"
 
-MODE="production"
+MODE="$(default_mode)"
 BACKUP_FILE_ARG=""
 ASSUME_YES="${RESTORE_ASSUME_YES:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    production|development)
+    qa|production)
       MODE="$1"
       ;;
     --yes|-y)
       ASSUME_YES=1
       ;;
     --help|-h)
-      echo "Uso: $0 [production|development] [ruta-backup.sql.enc|directorio-backups] [--yes]"
+      echo "Uso: $0 [qa|production] [ruta-backup.sql.enc|directorio-backups] [--yes]"
       echo "Si no indicas archivo, se restaura el .sql.enc mas reciente de backups/."
       exit 0
       ;;
@@ -35,6 +35,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 require_valid_mode "${MODE}"
+MODE="$(canonical_env_mode "${MODE}")"
 ENV_FILE="$(resolve_env_file "${MODE}")"
 
 ensure_prereqs
@@ -53,7 +54,7 @@ if [[ -z "${BACKUP_FILE}" ]]; then
 fi
 
 if [[ -z "${BACKUP_FILE}" || ! -f "${BACKUP_FILE}" ]]; then
-  echo "No existe un snapshot para restaurar. Ejecuta primero ./scripts/backup-and-stop.sh production o development." >&2
+  echo "No existe un snapshot para restaurar. Ejecuta primero ./scripts/backup-and-stop.sh qa o production." >&2
   exit 1
 fi
 

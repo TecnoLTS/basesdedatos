@@ -10,8 +10,8 @@ usage() {
 Uso: ./scripts/import-between-envs.sh <origen> <destino> [--yes]
 
 Ejemplos:
-  ./scripts/import-between-envs.sh development production
-  ./scripts/import-between-envs.sh production development --yes
+  ./scripts/import-between-envs.sh qa production
+  ./scripts/import-between-envs.sh production qa --yes
 
 El script genera un backup cifrado del origen, detiene ese ambiente y restaura
 el snapshot en el destino. Si origen y destino usan claves distintas, toma la

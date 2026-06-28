@@ -8,9 +8,9 @@ source "${SCRIPT_DIR}/common.sh"
 usage() {
   cat <<'USAGE'
 Uso:
-  ./scripts/transfer-sales.sh export <ORDER_ID> [ORDER_ID...] [--stage] [--label nombre] [--mode production|development]
-  ./scripts/transfer-sales.sh export --latest 2 [--stage] [--label nombre] [--mode production|development]
-  ./scripts/transfer-sales.sh restore [git-transfer/sales-*.json.enc] [--yes] [--mode production|development]
+  ./scripts/transfer-sales.sh export <ORDER_ID> [ORDER_ID...] [--stage] [--label nombre] [--mode production|qa]
+  ./scripts/transfer-sales.sh export --latest 2 [--stage] [--label nombre] [--mode production|qa]
+  ./scripts/transfer-sales.sh restore [git-transfer/sales-*.json.enc] [--yes] [--mode production|qa]
 
 Exporta solo ventas seleccionadas y sus dependencias directas:
   - User asociado a la orden

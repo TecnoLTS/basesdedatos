@@ -8,8 +8,8 @@ source "${SCRIPT_DIR}/common.sh"
 usage() {
   cat <<'USAGE'
 Uso:
-  ./scripts/transfer-db.sh export [--label nombre] [--mode production|development]
-  ./scripts/transfer-db.sh restore [git-transfer/backup.sql.enc] [--yes] [--mode production|development]
+  ./scripts/transfer-db.sh export [--label nombre] [--mode qa|production]
+  ./scripts/transfer-db.sh restore [git-transfer/backup.sql.enc] [--yes] [--mode qa|production]
 
 Flujo normal:
   1. En origen:  ./scripts/transfer-db.sh export
@@ -106,6 +106,7 @@ if [[ -z "${MODE}" ]]; then
   MODE="$(default_mode)"
 fi
 require_valid_mode "${MODE}"
+MODE="$(canonical_env_mode "${MODE}")"
 
 case "${COMMAND}" in
   export)

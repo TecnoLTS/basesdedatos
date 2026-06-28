@@ -3,6 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+WORKSPACE_ENV_MODE="${APP_DIR}/../scripts/env-mode.sh"
+# shellcheck disable=SC1090
+source "${WORKSPACE_ENV_MODE}"
 BACKUP_FILE="${BACKUP_FILE:-}"
 DATA_DIR="${DATA_DIR:-${APP_DIR}/postgres18_data}"
 ENTORNO_DIR="${APP_DIR}/entorno"
@@ -13,14 +16,14 @@ MODULE_DATABASES_REGISTRY_FILE="${APP_DIR}/config/module-databases.json"
 valid_mode() {
   local mode="$1"
 
-  [[ "${mode}" == "production" || "${mode}" == "development" ]]
+  canonical_env_mode "${mode}" >/dev/null 2>&1
 }
 
 require_valid_mode() {
   local mode="$1"
 
   if ! valid_mode "${mode}"; then
-    echo "Modo invalido: ${mode}. Usa production o development." >&2
+    echo "Modo invalido: ${mode}. Usa qa o production." >&2
     exit 1
   fi
 }
@@ -29,8 +32,9 @@ default_data_dir_for_mode() {
   local mode="$1"
 
   require_valid_mode "${mode}"
-  if [[ "${mode}" == "development" ]]; then
-    printf '%s\n' "./postgres18_development_data"
+  mode="$(canonical_env_mode "${mode}")"
+  if [[ "${mode}" == "qa" ]]; then
+    printf '%s\n' "./postgres18_qa_data"
   else
     printf '%s\n' "./postgres18_data"
   fi
@@ -87,6 +91,7 @@ backup_dir_for_mode() {
   local mode="$1"
 
   require_valid_mode "${mode}"
+  mode="$(canonical_env_mode "${mode}")"
   printf '%s\n' "${APP_DIR}/backups/${mode}"
 }
 
@@ -153,7 +158,7 @@ latest_local_backup_file() {
 }
 
 running_db_env() {
-  docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' next-test-db 2>/dev/null | awk -F= '/^DB_ENV=/{print $2; exit}' || true
+  docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' basesdedatos 2>/dev/null | awk -F= '/^DB_ENV=/{print $2; exit}' || true
 }
 
 default_mode() {
@@ -161,14 +166,14 @@ default_mode() {
 
   mode="$(running_db_env)"
   if valid_mode "${mode}"; then
-    printf '%s\n' "${mode}"
+    canonical_env_mode "${mode}"
     return 0
   fi
 
   if [[ -f "${ENTORNO_ENV_FILE}" ]]; then
     mode="$(env_value_from_file "${ENTORNO_ENV_FILE}" ENTORNO_MODE)"
     if valid_mode "${mode}"; then
-      printf '%s\n' "${mode}"
+      canonical_env_mode "${mode}"
       return 0
     fi
   fi
@@ -221,8 +226,8 @@ ensure_prereqs() {
     docker network create edge >/dev/null
   fi
 
-  if ! docker network inspect paramascotasec-db-internal >/dev/null 2>&1; then
-    docker network create --internal paramascotasec-db-internal >/dev/null
+  if ! docker network inspect basesdedatos-internal >/dev/null 2>&1; then
+    docker network create --internal basesdedatos-internal >/dev/null
   fi
 }
 
@@ -277,7 +282,7 @@ assert_no_legacy_runtime_paths() {
   local found=()
   local path
 
-  for suffix in "" ".development" ".production" ".local"; do
+  for suffix in "" ".production" ".local"; do
     path="${APP_DIR}/${env_name}${suffix}"
     if [[ -e "${path}" ]]; then
       found+=("${path#${APP_DIR}/}")
@@ -285,19 +290,21 @@ assert_no_legacy_runtime_paths() {
   done
 
   if (( ${#found[@]} > 0 )); then
-    printf 'Rutas legacy fuera de entorno/ detectadas en paramascotasec-DB: %s\n' "${found[*]}" >&2
-    printf 'Ejecuta scripts/migrate-entorno.sh o mueve esos archivos a un backup externo antes de desplegar.\n' >&2
+    printf 'Rutas legacy fuera de entorno/ detectadas en basesdedatos: %s\n' "${found[*]}" >&2
+    printf 'Mueve esos archivos a un backup externo antes de desplegar.\n' >&2
     exit 1
   fi
 }
 
 assert_entorno_mode() {
   local expected="$1"
-  local actual
+  local actual expected_canonical actual_canonical
 
   actual="$(env_value_from_file "${ENTORNO_ENV_FILE}" ENTORNO_MODE)"
+  expected_canonical="$(canonical_env_mode "${expected}")"
+  actual_canonical="$(canonical_env_mode "${actual}" 2>/dev/null || true)"
 
-  if [[ "${actual}" != "${expected}" ]]; then
+  if [[ "${actual_canonical}" != "${expected_canonical}" ]]; then
     echo "ENTORNO_MODE=${actual:-<vacio>} en ${ENTORNO_ENV_FILE}; esperado ${expected}." >&2
     exit 1
   fi
@@ -307,23 +314,47 @@ resolve_env_file() {
   local mode="${1:-production}"
   local env_file="${ENTORNO_ENV_FILE}"
   require_valid_mode "${mode}"
+  mode="$(canonical_env_mode "${mode}")"
   assert_no_legacy_runtime_paths
   ensure_entorno_files
   assert_entorno_mode "${mode}"
-
-  if [[ "${mode}" == "development" ]]; then
-    upsert_env_value "${env_file}" "POSTGRES_BIND_IP" "127.0.0.1"
-    upsert_env_value "${env_file}" "DB_ENV" "development"
-    upsert_env_value "${env_file}" "POSTGRES_DATA_DIR" "$(default_data_dir_for_mode "${mode}")"
-
-    printf '%s\n' "${env_file}"
-    return 0
-  fi
-
-  upsert_env_value "${env_file}" "DB_ENV" "production"
-  upsert_env_value "${env_file}" "POSTGRES_DATA_DIR" "$(default_data_dir_for_mode "${mode}")"
+  validate_db_env_for_mode "${mode}" "${env_file}"
   printf '%s\n' "${env_file}"
   return 0
+}
+
+validate_db_env_for_mode() {
+  local mode="$1"
+  local env_file="$2"
+  local db_env data_dir bind_ip
+
+  db_env="$(env_value_from_file "${env_file}" DB_ENV)"
+  data_dir="$(env_value_from_file "${env_file}" POSTGRES_DATA_DIR)"
+  bind_ip="$(env_value_from_file "${env_file}" POSTGRES_BIND_IP)"
+
+  if [[ -z "${data_dir}" ]]; then
+    echo "POSTGRES_DATA_DIR debe estar definido en ${env_file}" >&2
+    exit 1
+  fi
+
+  case "${mode}" in
+    qa)
+      if [[ "${db_env}" != "qa" ]]; then
+        echo "DB_ENV=${db_env:-<vacio>} no es valido para QA; usa qa." >&2
+        exit 1
+      fi
+      if [[ "${bind_ip:-127.0.0.1}" == "0.0.0.0" ]]; then
+        echo "POSTGRES_BIND_IP=${bind_ip} no es valido para QA; no debe exponerse en 0.0.0.0." >&2
+        exit 1
+      fi
+      ;;
+    production)
+      if [[ "${db_env}" != "production" ]]; then
+        echo "DB_ENV=${db_env:-<vacio>} no es valido para production; usa production." >&2
+        exit 1
+      fi
+      ;;
+  esac
 }
 
 load_env_file() {
@@ -520,12 +551,13 @@ sync_module_databases() {
 }
 
 assert_db_mode() {
-  local mode="${1:-production}"
-  local container_env
+  local env_file="$1"
+  local container_env expected_env
 
-  container_env="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' next-test-db 2>/dev/null | awk -F= '/^DB_ENV=/{print $2; exit}')"
-  if [[ "${container_env}" != "${mode}" ]]; then
-    echo "La base de datos quedo en DB_ENV=${container_env:-desconocido}, esperado ${mode}" >&2
+  container_env="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' basesdedatos 2>/dev/null | awk -F= '/^DB_ENV=/{print $2; exit}')"
+  expected_env="$(env_value_from_file "${env_file}" DB_ENV)"
+  if [[ "${container_env}" != "${expected_env}" ]]; then
+    echo "La base de datos quedo en DB_ENV=${container_env:-desconocido}, esperado ${expected_env:-<vacio>}" >&2
     exit 1
   fi
 }
@@ -557,21 +589,50 @@ wait_for_db() {
   exit 1
 }
 
+remove_renamed_compose_container() {
+  local container_name="$1"
+  local expected_project
+  local current_project
+
+  if ! docker ps -a --format '{{.Names}}' | grep -qx "${container_name}"; then
+    return 0
+  fi
+
+  expected_project="$(basename "${APP_DIR}")"
+  current_project="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "${container_name}" 2>/dev/null || true)"
+  if [[ -n "${current_project}" && "${current_project}" != "${expected_project}" ]]; then
+    echo "Removiendo contenedor ${container_name} del proyecto Compose anterior (${current_project}); los datos permanecen en ${DATA_DIR}."
+    docker rm -f "${container_name}" >/dev/null
+  fi
+}
+
+remove_legacy_db_container() {
+  local container_name="next-test-db"
+
+  if docker ps -a --format '{{.Names}}' | grep -qx "${container_name}"; then
+    echo "Removiendo contenedor legacy ${container_name}; los datos permanecen en ${DATA_DIR}."
+    docker rm -f "${container_name}" >/dev/null
+  fi
+}
+
 deploy_database() {
   local mode="${1:-production}"
   local env_file
 
   ensure_prereqs
+  mode="$(canonical_env_mode "${mode}")"
   env_file="$(resolve_env_file "${mode}")"
   load_env_file "${env_file}"
 
-  echo "Levantando PostgreSQL en ${mode} usando ${env_file}..."
+  echo "Levantando PostgreSQL (${mode}) usando ${env_file}..."
+  remove_legacy_db_container
+  remove_renamed_compose_container basesdedatos
   compose_cmd "${env_file}" up -d --force-recreate --remove-orphans db
   wait_for_db "${env_file}"
-  assert_db_mode "${mode}"
+  assert_db_mode "${env_file}"
   sync_module_databases "${env_file}"
   compose_cmd "${env_file}" ps
-  echo "Base de datos ${mode} lista"
+  echo "Base de datos (${mode}) lista"
 }
 
 reset_data_dir() {
