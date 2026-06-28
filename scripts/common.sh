@@ -567,6 +567,63 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENC
 SQL
 }
 
+sync_fdw_user_mappings() {
+  local env_file="$1"
+  local database_name="$2"
+  local role_name="$3"
+  local role_password="$4"
+
+  if ! safe_identifier "${database_name}" || ! safe_identifier "${role_name}"; then
+    echo "No se pueden sincronizar mappings FDW por identificadores inseguros: ${database_name}/${role_name}" >&2
+    exit 1
+  fi
+
+  compose_cmd "${env_file}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \
+    psql -h 127.0.0.1 -U "${POSTGRES_USER}" -d "${database_name}" -v ON_ERROR_STOP=1 \
+      -v runtime_role="${role_name}" -v runtime_password="${role_password}" <<SQL >/dev/null
+SELECT set_config('app.fdw_runtime_role', :'runtime_role', false);
+SELECT set_config('app.fdw_runtime_password', :'runtime_password', false);
+DO \$\$
+DECLARE
+    server_record record;
+    mapping_role text;
+    runtime_role text := current_setting('app.fdw_runtime_role');
+    runtime_password text := current_setting('app.fdw_runtime_password');
+BEGIN
+    FOREACH mapping_role IN ARRAY ARRAY['postgres', runtime_role]
+    LOOP
+        IF to_regrole(mapping_role) IS NULL THEN
+            CONTINUE;
+        END IF;
+
+        FOR server_record IN
+            SELECT srvname
+            FROM pg_foreign_server
+            ORDER BY srvname
+        LOOP
+            EXECUTE format(
+                'GRANT USAGE ON FOREIGN SERVER %I TO %I',
+                server_record.srvname,
+                mapping_role
+            );
+            EXECUTE format(
+                'DROP USER MAPPING IF EXISTS FOR %I SERVER %I',
+                mapping_role,
+                server_record.srvname
+            );
+            EXECUTE format(
+                'CREATE USER MAPPING FOR %I SERVER %I OPTIONS (user %L, password %L)',
+                mapping_role,
+                server_record.srvname,
+                runtime_role,
+                runtime_password
+            );
+        END LOOP;
+    END LOOP;
+END \$\$;
+SQL
+}
+
 sync_module_databases() {
   local env_file="$1"
   local module_key database_name role_source optional_flag role_env_ref db_key user_key password_key owner_flag
@@ -634,6 +691,7 @@ sync_module_databases() {
       ensure_database_role "${env_file}" "${runtime_user}" "${runtime_password}"
       create_database_if_missing "${env_file}" "${declared_database}" "${runtime_user}"
       grant_database_access "${env_file}" "${declared_database}" "${runtime_user}" "${owner_flag}"
+      sync_fdw_user_mappings "${env_file}" "${declared_database}" "${runtime_user}" "${runtime_password}"
       echo "Sincronizada DB ${declared_database} para ${module_key} con rol ${runtime_user}."
       continue
     fi

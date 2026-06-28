@@ -66,7 +66,8 @@ cd /home/admincenter/contenedores/basesdedatos
 ```
 
 El comando pide una clave para cifrar el backup y la solicita dos veces. Esa
-misma clave se debe ingresar al restaurar.
+misma clave se debe ingresar al restaurar. El backup deja PostgreSQL en
+ejecucion; no apaga los servicios al finalizar.
 
 El archivo queda en un solo directorio de backups con nombre neutral:
 
@@ -112,6 +113,9 @@ cd /home/admincenter/contenedores/basesdedatos
 ./scripts/transfer-db.sh export --label traslado
 ```
 
+La exportacion genera el backup cifrado y deja el servicio de base de datos
+funcionando.
+
 El backup exportado queda en:
 
 ```text
@@ -151,6 +155,29 @@ npm --prefix dashboard run docker:up
 ./scripts/check-container-connectivity.sh qa
 ```
 
+La restauracion ejecuta la sincronizacion de bases por modulo al final. Ese
+paso reconcilia contra el `.env` activo las bases logicas, el rol runtime,
+grants y los `USER MAPPING` de `postgres_fdw`, para que secretos embebidos en
+un backup no queden apuntando al ambiente origen.
+
+Si necesitas reconciliar manualmente sin restaurar:
+
+```bash
+cd /home/admincenter/contenedores
+./basesdedatos/scripts/sync-module-databases.sh
+docker exec backend-api php /var/www/html/scripts/check_module_databases.php
+```
+
+Si el backend no esta levantado, puedes sincronizar primero y validar despues
+de desplegarlo:
+
+```bash
+cd /home/admincenter/contenedores
+./basesdedatos/scripts/sync-module-databases.sh
+./scripts/deploy.sh backend
+docker exec backend-api php /var/www/html/scripts/check_module_databases.php
+```
+
 Para listar backups disponibles:
 
 ```bash
@@ -165,3 +192,17 @@ docker exec basesdedatos postgres --version
 docker compose --env-file entorno/.env ps
 docker compose --env-file entorno/.env logs -f db
 ```
+
+
+
+
+
+
+cd /home/admincenter/contenedores/basesdedatos
+./scripts/transfer-db.sh export --label traslado
+
+
+
+cd /home/admincenter/contenedores/basesdedatos
+./scripts/transfer-db.sh restore --yes
+

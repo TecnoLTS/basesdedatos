@@ -129,11 +129,8 @@ if command -v sha256sum >/dev/null 2>&1; then
   )
 fi
 
-echo "Apagando servicio de base de datos..."
-compose_cmd "${ENV_FILE}" down --remove-orphans
-
 echo "Snapshot listo en ${BACKUP_FILE}"
 if [[ "$(dirname "${BACKUP_FILE}")" == "${MODE_BACKUP_DIR}" ]]; then
   echo "Alias actualizado en ${LATEST_FILE}"
 fi
-echo "Servicio detenido"
+echo "Servicio de base de datos en ejecucion"
