@@ -8,14 +8,15 @@ source "${SCRIPT_DIR}/common.sh"
 usage() {
   cat <<'USAGE'
 Uso:
-  ./scripts/transfer-db.sh export [--label nombre] [--mode qa|production]
-  ./scripts/transfer-db.sh restore [git-transfer/backup.sql.enc] [--yes] [--mode qa|production]
+  ./scripts/transfer-db.sh export [--label nombre]
+  ./scripts/transfer-db.sh restore [git-transfer/backup.sql.enc] [--yes]
 
 Flujo normal:
   1. En origen:  ./scripts/transfer-db.sh export
   2. En destino: ./scripts/transfer-db.sh restore
 
-El script detecta el ambiente activo. La clave temporal la eliges en origen y
+El ambiente activo sale de entorno/.env (ENTORNO_MODE=qa|production).
+La clave temporal la eliges en origen y
 la vuelves a ingresar en destino. Esa clave no se guarda en Git. El paquete
 cifrado queda visible para Git; tu decides cuando hacer commit y push.
 USAGE
@@ -60,7 +61,6 @@ if [[ -z "${COMMAND}" || "${COMMAND}" == "--help" || "${COMMAND}" == "-h" ]]; th
 fi
 shift
 
-MODE=""
 LABEL="transfer"
 ASSUME_YES=0
 BACKUP_ARG=""
@@ -68,12 +68,9 @@ BACKUP_ARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode)
-      MODE="${2:-}"
-      if [[ -z "${MODE}" ]]; then
-        echo "Falta valor para --mode" >&2
-        exit 1
-      fi
-      shift
+      echo "No uses --mode. El ambiente se lee desde entorno/.env (ENTORNO_MODE)." >&2
+      usage >&2
+      exit 1
       ;;
     --label)
       LABEL="${2:-}"
@@ -102,11 +99,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ -z "${MODE}" ]]; then
-  MODE="$(default_mode)"
-fi
-require_valid_mode "${MODE}"
-MODE="$(canonical_env_mode "${MODE}")"
+MODE="$(active_mode_from_env)"
 
 case "${COMMAND}" in
   export)
@@ -117,7 +110,7 @@ case "${COMMAND}" in
     fi
 
     TRANSFER_BACKUP_PASSPHRASE="${TRANSFER_PASSPHRASE}" \
-      "${SCRIPT_DIR}/export-for-git.sh" "${MODE}" "${LABEL}"
+      "${SCRIPT_DIR}/export-for-git.sh" --label "${LABEL}"
     ;;
   restore|import)
     if [[ -z "${BACKUP_ARG}" ]]; then
@@ -135,7 +128,7 @@ case "${COMMAND}" in
       TRANSFER_PASSPHRASE="$(read_transfer_passphrase "Ingresa la misma clave temporal usada en el origen" 0)"
     fi
 
-    args=("${MODE}" "${BACKUP_ARG}")
+    args=("${BACKUP_ARG}")
     if [[ "${ASSUME_YES}" == "1" ]]; then
       args+=("--yes")
     fi

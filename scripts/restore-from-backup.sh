@@ -5,21 +5,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./common.sh
 source "${SCRIPT_DIR}/common.sh"
 
-MODE="$(default_mode)"
+usage() {
+  cat <<'USAGE'
+Uso: ./scripts/restore-from-backup.sh [ruta-backup.sql.enc|directorio-backups] [--yes]
+
+Si no indicas archivo, se restaura el .sql.enc mas reciente del ambiente activo.
+El ambiente activo sale de entorno/.env (ENTORNO_MODE=qa|production).
+No pases qa ni production como argumento.
+USAGE
+}
+
 BACKUP_FILE_ARG=""
 ASSUME_YES="${RESTORE_ASSUME_YES:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     qa|production)
-      MODE="$1"
+      echo "No pases '$1' al restore. El ambiente destino se lee desde entorno/.env (ENTORNO_MODE)." >&2
+      echo "Uso correcto: ./scripts/restore-from-backup.sh [ruta-backup.sql.enc|directorio-backups] [--yes]" >&2
+      exit 1
       ;;
     --yes|-y)
       ASSUME_YES=1
       ;;
     --help|-h)
-      echo "Uso: $0 [qa|production] [ruta-backup.sql.enc|directorio-backups] [--yes]"
-      echo "Si no indicas archivo, se restaura el .sql.enc mas reciente de backups/."
+      usage
       exit 0
       ;;
     *)
@@ -34,8 +44,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-require_valid_mode "${MODE}"
-MODE="$(canonical_env_mode "${MODE}")"
+MODE="$(active_mode_from_env)"
 ENV_FILE="$(resolve_env_file "${MODE}")"
 
 ensure_prereqs
@@ -49,12 +58,13 @@ if [[ -z "${BACKUP_FILE}" ]]; then
       BACKUP_FILE="$(latest_backup_file_in_dir "${BACKUP_FILE}")"
     fi
   else
-    BACKUP_FILE="$(latest_local_backup_file)"
+    BACKUP_FILE="$(latest_local_backup_file "${MODE}")"
   fi
 fi
 
 if [[ -z "${BACKUP_FILE}" || ! -f "${BACKUP_FILE}" ]]; then
-  echo "No existe un snapshot para restaurar. Ejecuta primero ./scripts/backup-and-stop.sh qa o production." >&2
+  echo "No existe un snapshot para restaurar en el ambiente activo (${MODE})." >&2
+  echo "Ejecuta primero ./scripts/backup-and-stop.sh o indica la ruta exacta de un .sql.enc." >&2
   exit 1
 fi
 

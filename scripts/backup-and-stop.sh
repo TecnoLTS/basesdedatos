@@ -7,15 +7,33 @@ source "${SCRIPT_DIR}/common.sh"
 
 umask 077
 
+usage() {
+  cat <<'USAGE'
+Uso: ./scripts/backup-and-stop.sh [ruta-backup.sql.enc]
+
+El ambiente activo sale de entorno/.env (ENTORNO_MODE=qa|production).
+No pases qa ni production como argumento.
+USAGE
+}
+
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  echo "Uso: $0 [qa|production] [ruta-backup.sql.enc]"
+  usage
   exit 0
 fi
 
-MODE="${1:-$(default_mode)}"
-require_valid_mode "${MODE}"
-MODE="$(canonical_env_mode "${MODE}")"
-BACKUP_FILE_ARG="${2:-}"
+if legacy_mode_arg "${1:-}"; then
+  echo "No pases '${1}' al backup. El ambiente se lee desde entorno/.env (ENTORNO_MODE)." >&2
+  echo "Uso correcto: ./scripts/backup-and-stop.sh [ruta-backup.sql.enc]" >&2
+  exit 1
+fi
+
+if [[ "$#" -gt 1 ]]; then
+  usage >&2
+  exit 1
+fi
+
+MODE="$(active_mode_from_env)"
+BACKUP_FILE_ARG="${1:-}"
 ENV_FILE="$(resolve_env_file "${MODE}")"
 
 ensure_prereqs
@@ -37,15 +55,15 @@ mkdir -p "$(dirname "${BACKUP_FILE}")"
 
 running_db_env="$(running_db_env)"
 if [[ -n "${running_db_env}" && "${running_db_env}" != "${MODE}" ]]; then
-  echo "La base principal esta levantada en modo ${running_db_env}, pero solicitaste backup ${MODE}." >&2
-  echo "Usa ./scripts/backup-and-stop.sh ${running_db_env} para respaldar esta base, o despliega ${MODE} antes de respaldar ese ambiente." >&2
+  echo "La base principal esta levantada en modo ${running_db_env}, pero entorno/.env indica ${MODE}." >&2
+  echo "Ajusta entorno/.env o despliega el ambiente activo antes de respaldar." >&2
   exit 1
 fi
 
 echo "Levantando PostgreSQL para exportar el cluster..."
 compose_cmd "${ENV_FILE}" up -d --remove-orphans db
 wait_for_db "${ENV_FILE}"
-assert_db_mode "${MODE}"
+assert_db_mode "${ENV_FILE}"
 
 echo "Generando snapshot completo cifrado en ${BACKUP_FILE}..."
 compose_cmd "${ENV_FILE}" exec -T -e PGPASSWORD="${POSTGRES_PASSWORD}" db \

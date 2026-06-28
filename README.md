@@ -62,40 +62,39 @@ Snapshot cifrado local del ambiente activo:
 
 ```bash
 cd /home/admincenter/contenedores/basesdedatos
-./scripts/backup-and-stop.sh qa
-./scripts/backup-and-stop.sh production
+./scripts/backup-and-stop.sh
 ```
 
-El archivo queda en:
+El archivo queda en un solo directorio de backups. El prefijo `qa-` o `production-`
+sale de `ENTORNO_MODE` y solo sirve para no confundir snapshots:
 
 ```text
-basesdedatos/backups/qa/*.sql.enc
-basesdedatos/backups/production/*.sql.enc
+basesdedatos/backups/<ENTORNO_MODE>-YYYYMMDDTHHMMSSZ.sql.enc
+basesdedatos/backups/<ENTORNO_MODE>-latest.sql.enc
 ```
 
-Restaurar el ultimo backup local disponible para QA o produccion:
+Restaurar el ultimo backup local disponible del ambiente activo:
 
 ```bash
 cd /home/admincenter/contenedores/basesdedatos
-./scripts/restore-from-backup.sh qa
-./scripts/restore-from-backup.sh production
+./scripts/restore-from-backup.sh
 ```
 
 Restaurar un archivo exacto:
 
 ```bash
 cd /home/admincenter/contenedores/basesdedatos
-./scripts/restore-from-backup.sh qa git-transfer/production-to-qa-YYYYMMDDTHHMMSSZ.sql.enc --yes
+./scripts/restore-from-backup.sh git-transfer/tu-backup.sql.enc --yes
 ```
 
 La restauracion reemplaza completamente el data dir del ambiente destino (`POSTGRES_DATA_DIR` en `entorno/.env`).
 No restaura solo una base logica; restaura todo el cluster.
 
-Exportar para transferencia por Git, por ejemplo produccion hacia QA:
+Exportar para transferencia por Git desde el servidor origen activo:
 
 ```bash
 cd /home/admincenter/contenedores/basesdedatos
-./scripts/transfer-db.sh export --mode production --label qa
+./scripts/transfer-db.sh export --label traslado
 ```
 
 El backup exportado queda en:
@@ -104,26 +103,26 @@ El backup exportado queda en:
 basesdedatos/git-transfer/*.sql.enc
 ```
 
-Restaurar el backup mas reciente de `git-transfer/` hacia QA:
+Restaurar el backup mas reciente de `git-transfer/` en el ambiente activo:
 
 ```bash
 cd /home/admincenter/contenedores/basesdedatos
 git pull
-./scripts/transfer-db.sh restore --mode qa
+./scripts/transfer-db.sh restore
 ```
 
 Restaurar un archivo exacto de `git-transfer/`:
 
 ```bash
 cd /home/admincenter/contenedores/basesdedatos
-./scripts/transfer-db.sh restore git-transfer/tu-backup.sql.enc --mode qa
+./scripts/transfer-db.sh restore git-transfer/tu-backup.sql.enc
 ```
 
 La restauracion pide la misma clave temporal usada al exportar.
 Si no quieres prompt interactivo:
 
 ```bash
-TRANSFER_BACKUP_PASSPHRASE='tu_clave' ./scripts/transfer-db.sh restore --mode qa
+TRANSFER_BACKUP_PASSPHRASE='tu_clave' ./scripts/transfer-db.sh restore
 ```
 
 Despues de restaurar, redeplegar los consumidores:
@@ -140,8 +139,7 @@ npm --prefix dashboard run docker:up
 Para listar backups disponibles:
 
 ```bash
-ls -lh /home/admincenter/contenedores/basesdedatos/backups/qa/*.sql.enc 2>/dev/null || true
-ls -lh /home/admincenter/contenedores/basesdedatos/backups/production/*.sql.enc 2>/dev/null || true
+ls -lh /home/admincenter/contenedores/basesdedatos/backups/*.sql.enc 2>/dev/null || true
 ls -lh /home/admincenter/contenedores/basesdedatos/git-transfer/*.sql.enc 2>/dev/null || true
 ```
 

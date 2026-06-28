@@ -7,10 +7,11 @@ source "${SCRIPT_DIR}/common.sh"
 
 usage() {
   cat <<'USAGE'
-Uso: ./scripts/import-from-git-transfer.sh <qa|production> <git-transfer/backup.sql.enc> [--yes]
+Uso: ./scripts/import-from-git-transfer.sh <git-transfer/backup.sql.enc> [--yes]
 
 Restaura un backup cifrado que llego por Git. Verifica el .sha256 si existe y
 pide la clave temporal fuera del repo.
+El ambiente destino sale de entorno/.env (ENTORNO_MODE=qa|production).
 
 Variables opcionales:
   BACKUP_DECRYPTION_PASSPHRASE  Clave temporal del paquete.
@@ -23,32 +24,38 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   exit 0
 fi
 
-TARGET_MODE="${1:-}"
-BACKUP_ARG="${2:-}"
+BACKUP_ARG=""
 ASSUME_YES=0
 
-shift $(( $# >= 2 ? 2 : $# ))
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    qa|production)
+      echo "No pases '$1' al import. El ambiente destino se lee desde entorno/.env (ENTORNO_MODE)." >&2
+      usage >&2
+      exit 1
+      ;;
     --yes|-y)
       ASSUME_YES=1
       ;;
     *)
-      echo "Argumento no reconocido: $1" >&2
-      usage >&2
-      exit 1
+      if [[ -z "${BACKUP_ARG}" ]]; then
+        BACKUP_ARG="$1"
+      else
+        echo "Argumento no reconocido: $1" >&2
+        usage >&2
+        exit 1
+      fi
       ;;
   esac
   shift
 done
 
-if [[ -z "${TARGET_MODE}" || -z "${BACKUP_ARG}" ]]; then
+if [[ -z "${BACKUP_ARG}" ]]; then
   usage >&2
   exit 1
 fi
 
-require_valid_mode "${TARGET_MODE}"
-TARGET_MODE="$(canonical_env_mode "${TARGET_MODE}")"
+active_mode_from_env >/dev/null
 BACKUP_PATH="$(absolute_app_path "${BACKUP_ARG}")"
 
 if [[ ! -f "${BACKUP_PATH}" ]]; then
@@ -75,7 +82,7 @@ if [[ -z "${PASSPHRASE}" ]]; then
   echo
 fi
 
-RESTORE_ARGS=("${TARGET_MODE}" "${BACKUP_PATH}")
+RESTORE_ARGS=("${BACKUP_PATH}")
 if [[ "${ASSUME_YES}" == "1" ]]; then
   RESTORE_ARGS+=("--yes")
 fi

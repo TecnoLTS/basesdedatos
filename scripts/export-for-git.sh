@@ -7,11 +7,12 @@ source "${SCRIPT_DIR}/common.sh"
 
 usage() {
   cat <<'USAGE'
-Uso: ./scripts/export-for-git.sh <qa|production> [etiqueta-destino]
+Uso: ./scripts/export-for-git.sh [--label etiqueta-destino]
 
 Genera un backup cifrado con una clave temporal distinta a la clave normal del
 ambiente. El backup queda en git-transfer/ para que Git detecte el cambio. La
 clave temporal nunca se agrega al repo.
+El ambiente activo sale de entorno/.env (ENTORNO_MODE=qa|production).
 
 Variables opcionales:
   TRANSFER_BACKUP_PASSPHRASE   Clave temporal ya acordada fuera de Git.
@@ -23,15 +24,23 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   exit 0
 fi
 
-MODE="${1:-$(default_mode)}"
-if [[ $# -gt 0 ]]; then
-  shift
-fi
-
 TARGET_LABEL="transfer"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    qa|production)
+      echo "No pases '$1' al export. El ambiente se lee desde entorno/.env (ENTORNO_MODE)." >&2
+      usage >&2
+      exit 1
+      ;;
+    --label)
+      TARGET_LABEL="${2:-}"
+      if [[ -z "${TARGET_LABEL}" ]]; then
+        echo "Falta valor para --label" >&2
+        exit 1
+      fi
+      shift
+      ;;
     --stage|--publish)
       echo "Aviso: $1 ya no hace git add, commit ni push; el archivo queda para que Git lo detecte." >&2
       ;;
@@ -48,8 +57,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-require_valid_mode "${MODE}"
-MODE="$(canonical_env_mode "${MODE}")"
+MODE="$(active_mode_from_env)"
 ensure_prereqs
 
 TIMESTAMP="$(timestamp_utc)"
@@ -85,7 +93,7 @@ EOF
 echo "Generando paquete cifrado para Git en ${BACKUP_PATH}..."
 BACKUP_FILE="${BACKUP_PATH}" \
 BACKUP_ENCRYPTION_PASSPHRASE_OVERRIDE="${TRANSFER_PASSPHRASE}" \
-  "${SCRIPT_DIR}/backup-and-stop.sh" "${MODE}" "${BACKUP_PATH}"
+  "${SCRIPT_DIR}/backup-and-stop.sh" "${BACKUP_PATH}"
 
 chmod 600 "${BACKUP_PATH}" "${BACKUP_PATH}.sha256"
 chmod 644 "${MANIFEST_PATH}"
