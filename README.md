@@ -105,7 +105,7 @@ la clave del backup y solo continua si esa clave descifra el archivo. `--yes`
 solo salta la confirmacion destructiva; no salta la clave.
 Si pasas un nombre, debe existir exactamente. `backup-YYYYMMDDTHHMMSSZ.sql.enc`
 es solo el patron del nombre, no un archivo real.
-
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Exportar para transferencia por Git desde el servidor origen activo:
 
 ```bash
@@ -127,8 +127,10 @@ Restaurar el backup mas reciente de `git-transfer/` en el ambiente activo:
 ```bash
 cd /home/admincenter/contenedores/basesdedatos
 git pull
-./scripts/transfer-db.sh restore
+./scripts/transfer-db.sh restore --yes
 ```
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 Restaurar un archivo exacto de `git-transfer/`:
 
