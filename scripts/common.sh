@@ -102,15 +102,15 @@ default_backup_file_for_mode() {
   local mode="$1"
   local timestamp="${2:-$(timestamp_utc)}"
 
-  printf '%s/%s-%s.sql.enc\n' "$(backup_dir_for_mode "${mode}")" "${mode}" "${timestamp}"
+  require_valid_mode "${mode}"
+  printf '%s/backup-%s.sql.enc\n' "$(backup_dir_for_mode "${mode}")" "${timestamp}"
 }
 
 latest_backup_file_for_mode() {
   local mode="$1"
 
   require_valid_mode "${mode}"
-  mode="$(canonical_env_mode "${mode}")"
-  printf '%s/%s-latest.sql.enc\n' "$(backup_dir_for_mode "${mode}")" "${mode}"
+  printf '%s/latest.sql.enc\n' "$(backup_dir_for_mode "${mode}")"
 }
 
 latest_backup_file_in_dir() {
@@ -118,7 +118,7 @@ latest_backup_file_in_dir() {
   local latest_file
 
   latest_file="$(
-    find "${backup_dir}" -maxdepth 1 -type f -name '*.sql.enc' ! -name 'latest.sql.enc' -printf '%T@ %p\n' 2>/dev/null \
+    find "${backup_dir}" -maxdepth 1 -type f -name '*.sql.enc' ! -name 'latest.sql.enc' ! -name '*-latest.sql.enc' -printf '%T@ %p\n' 2>/dev/null \
       | sort -nr \
       | awk 'NR == 1 {print $2}'
   )"
@@ -139,6 +139,22 @@ latest_local_backup_file() {
 
   if valid_mode "${mode}"; then
     mode="$(canonical_env_mode "${mode}")"
+
+    latest_file="$(
+      find "${APP_DIR}/backups" -maxdepth 1 -type f -name 'backup-*.sql.enc' ! -name 'latest.sql.enc' -printf '%T@ %p\n' 2>/dev/null \
+        | sort -nr \
+        | awk 'NR == 1 {print $2}'
+    )"
+
+    if [[ -n "${latest_file}" ]]; then
+      printf '%s\n' "${latest_file}"
+      return 0
+    fi
+
+    if [[ -f "${APP_DIR}/backups/latest.sql.enc" || -L "${APP_DIR}/backups/latest.sql.enc" ]]; then
+      printf '%s\n' "${APP_DIR}/backups/latest.sql.enc"
+      return 0
+    fi
 
     latest_file="$(
       find "${APP_DIR}/backups" -maxdepth 1 -type f -name "${mode}-*.sql.enc" ! -name "${mode}-latest.sql.enc" -printf '%T@ %p\n' 2>/dev/null \
@@ -175,7 +191,18 @@ latest_local_backup_file() {
   fi
 
   latest_file="$(
-    find "${APP_DIR}/backups" -maxdepth 1 -type f -name '*.sql.enc' ! -name '*-latest.sql.enc' -printf '%T@ %p\n' 2>/dev/null \
+    find "${APP_DIR}/backups" -maxdepth 1 -type f -name '*.sql.enc' ! -name 'latest.sql.enc' ! -name '*-latest.sql.enc' -printf '%T@ %p\n' 2>/dev/null \
+      | sort -nr \
+      | awk 'NR == 1 {print $2}'
+  )"
+
+  if [[ -n "${latest_file}" ]]; then
+    printf '%s\n' "${latest_file}"
+    return 0
+  fi
+
+  latest_file="$(
+    find "${APP_DIR}/backups" -maxdepth 1 \( -type f -o -type l \) -name 'latest.sql.enc' -printf '%T@ %p\n' 2>/dev/null \
       | sort -nr \
       | awk 'NR == 1 {print $2}'
   )"

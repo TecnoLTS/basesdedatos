@@ -10,12 +10,13 @@ usage() {
 Uso: ./scripts/import-from-git-transfer.sh <git-transfer/backup.sql.enc> [--yes]
 
 Restaura un backup cifrado que llego por Git. Verifica el .sha256 si existe y
-pide la clave temporal fuera del repo.
-El ambiente destino sale de entorno/.env (ENTORNO_MODE=qa|production).
+pasa la restauracion al resolvedor comun de claves.
+El ambiente destino sale de entorno/.env.
 
 Variables opcionales:
   BACKUP_DECRYPTION_PASSPHRASE  Clave temporal del paquete.
   TRANSFER_BACKUP_PASSPHRASE    Alias aceptado para la misma clave.
+  BACKUP_PASSPHRASE_FILE        Archivo local con la clave, primera linea.
 USAGE
 }
 
@@ -30,7 +31,7 @@ ASSUME_YES=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     qa|production)
-      echo "No pases '$1' al import. El ambiente destino se lee desde entorno/.env (ENTORNO_MODE)." >&2
+      echo "No pases el ambiente al import. El ambiente destino se lee desde entorno/.env." >&2
       usage >&2
       exit 1
       ;;
@@ -72,20 +73,9 @@ else
   echo "Advertencia: no existe checksum ${BACKUP_PATH}.sha256" >&2
 fi
 
-PASSPHRASE="${BACKUP_DECRYPTION_PASSPHRASE:-${TRANSFER_BACKUP_PASSPHRASE:-}}"
-if [[ -z "${PASSPHRASE}" ]]; then
-  if [[ ! -t 0 ]]; then
-    echo "Falta BACKUP_DECRYPTION_PASSPHRASE o TRANSFER_BACKUP_PASSPHRASE." >&2
-    exit 1
-  fi
-  read -r -s -p "Clave temporal del backup: " PASSPHRASE
-  echo
-fi
-
 RESTORE_ARGS=("${BACKUP_PATH}")
 if [[ "${ASSUME_YES}" == "1" ]]; then
   RESTORE_ARGS+=("--yes")
 fi
 
-BACKUP_DECRYPTION_PASSPHRASE="${PASSPHRASE}" \
-  "${SCRIPT_DIR}/restore-from-backup.sh" "${RESTORE_ARGS[@]}"
+"${SCRIPT_DIR}/restore-from-backup.sh" "${RESTORE_ARGS[@]}"

@@ -9,9 +9,15 @@ usage() {
   cat <<'USAGE'
 Uso: ./scripts/restore-from-backup.sh [ruta-backup.sql.enc|directorio-backups] [--yes]
 
-Si no indicas archivo, se restaura el .sql.enc mas reciente del ambiente activo.
-El ambiente activo sale de entorno/.env (ENTORNO_MODE=qa|production).
-No pases qa ni production como argumento.
+Si no indicas archivo, se restaura el .sql.enc local mas reciente disponible,
+sin filtrar por nombre ni origen.
+El ambiente activo sale de entorno/.env y solo define el destino.
+No pases el ambiente como argumento.
+
+Variables opcionales para descifrar:
+  BACKUP_DECRYPTION_PASSPHRASE  Clave exacta del backup.
+  TRANSFER_BACKUP_PASSPHRASE    Alias para backups de git-transfer.
+  BACKUP_PASSPHRASE_FILE        Archivo local con la clave, primera linea.
 USAGE
 }
 
@@ -21,7 +27,7 @@ ASSUME_YES="${RESTORE_ASSUME_YES:-0}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     qa|production)
-      echo "No pases '$1' al restore. El ambiente destino se lee desde entorno/.env (ENTORNO_MODE)." >&2
+      echo "No pases el ambiente al restore. El ambiente destino se lee desde entorno/.env." >&2
       echo "Uso correcto: ./scripts/restore-from-backup.sh [ruta-backup.sql.enc|directorio-backups] [--yes]" >&2
       exit 1
       ;;
@@ -58,23 +64,127 @@ if [[ -z "${BACKUP_FILE}" ]]; then
       BACKUP_FILE="$(latest_backup_file_in_dir "${BACKUP_FILE}")"
     fi
   else
-    BACKUP_FILE="$(latest_local_backup_file "${MODE}")"
+    BACKUP_FILE="$(latest_local_backup_file)"
   fi
 fi
 
 if [[ -z "${BACKUP_FILE}" || ! -f "${BACKUP_FILE}" ]]; then
-  echo "No existe un snapshot para restaurar en el ambiente activo (${MODE})." >&2
-  echo "Ejecuta primero ./scripts/backup-and-stop.sh o indica la ruta exacta de un .sql.enc." >&2
+  echo "No existe un snapshot local para restaurar." >&2
+  echo "Ejecuta primero ./scripts/backup-and-stop.sh o indica la ruta exacta de cualquier .sql.enc." >&2
   exit 1
 fi
 
-if [[ -z "${BACKUP_PASSPHRASE}" ]]; then
-  if [[ ! -t 0 ]]; then
-    echo "Falta BACKUP_DECRYPTION_PASSPHRASE con la clave del backup." >&2
-    exit 1
+verify_backup_checksum() {
+  local checksum_file="${BACKUP_FILE}.sha256"
+
+  if [[ ! -f "${checksum_file}" ]]; then
+    return 0
   fi
-  read -r -s -p "Clave del backup cifrado: " BACKUP_PASSPHRASE
-  echo
+
+  if ! command -v sha256sum >/dev/null 2>&1; then
+    echo "Advertencia: existe ${checksum_file}, pero sha256sum no esta disponible." >&2
+    return 0
+  fi
+
+  (
+    cd "$(dirname "${BACKUP_FILE}")"
+    sha256sum -c "$(basename "${checksum_file}")"
+  )
+}
+
+declare -a PASSPHRASE_CANDIDATES=()
+declare -a PASSPHRASE_SOURCES=()
+
+add_passphrase_candidate() {
+  local source="$1"
+  local value="$2"
+  local index
+
+  [[ -n "${value}" ]] || return 0
+
+  for index in "${!PASSPHRASE_CANDIDATES[@]}"; do
+    if [[ "${PASSPHRASE_CANDIDATES[${index}]}" == "${value}" ]]; then
+      return 0
+    fi
+  done
+
+  PASSPHRASE_CANDIDATES+=("${value}")
+  PASSPHRASE_SOURCES+=("${source}")
+}
+
+add_passphrase_file_candidate() {
+  local source="$1"
+  local file="$2"
+  local value=""
+
+  [[ -n "${file}" && -f "${file}" ]] || return 0
+
+  IFS= read -r value < "${file}" || true
+  add_passphrase_candidate "${source}" "${value}"
+}
+
+try_decrypt_backup() {
+  local passphrase="$1"
+
+  BACKUP_ENCRYPTION_PASSPHRASE="${passphrase}" decrypt_backup_stream < "${BACKUP_FILE}" >/dev/null 2>&1
+}
+
+select_backup_passphrase() {
+  local index
+  local entered_passphrase
+  local available_sources="ninguna"
+
+  add_passphrase_candidate "BACKUP_DECRYPTION_PASSPHRASE" "${BACKUP_DECRYPTION_PASSPHRASE:-}"
+  add_passphrase_candidate "TRANSFER_BACKUP_PASSPHRASE" "${TRANSFER_BACKUP_PASSPHRASE:-}"
+  add_passphrase_candidate "BACKUP_ENCRYPTION_PASSPHRASE_OVERRIDE" "${BACKUP_ENCRYPTION_PASSPHRASE_OVERRIDE:-}"
+  add_passphrase_file_candidate "BACKUP_PASSPHRASE_FILE" "${BACKUP_PASSPHRASE_FILE:-}"
+  add_passphrase_file_candidate "transfer-secrets/$(basename "${BACKUP_FILE}").passphrase" "${APP_DIR}/transfer-secrets/$(basename "${BACKUP_FILE}").passphrase"
+  add_passphrase_candidate "BACKUP_ENCRYPTION_PASSPHRASE de entorno/.env activo" "${BACKUP_ENCRYPTION_PASSPHRASE:-}"
+
+  for index in "${!PASSPHRASE_CANDIDATES[@]}"; do
+    if try_decrypt_backup "${PASSPHRASE_CANDIDATES[${index}]}"; then
+      BACKUP_PASSPHRASE="${PASSPHRASE_CANDIDATES[${index}]}"
+      BACKUP_PASSPHRASE_SOURCE="${PASSPHRASE_SOURCES[${index}]}"
+      return 0
+    fi
+  done
+
+  if [[ -t 0 ]]; then
+    while true; do
+      read -r -s -p "Clave del backup cifrado: " entered_passphrase
+      echo
+      if [[ -z "${entered_passphrase}" ]]; then
+        echo "La clave no puede estar vacia." >&2
+        continue
+      fi
+      if try_decrypt_backup "${entered_passphrase}"; then
+        BACKUP_PASSPHRASE="${entered_passphrase}"
+        BACKUP_PASSPHRASE_SOURCE="prompt interactivo"
+        return 0
+      fi
+      echo "La clave ingresada no descifra este backup." >&2
+    done
+  fi
+
+  if (( ${#PASSPHRASE_SOURCES[@]} > 0 )); then
+    available_sources="${PASSPHRASE_SOURCES[*]}"
+  fi
+
+  echo "No pude desencriptar ${BACKUP_FILE} con las claves disponibles: ${available_sources}." >&2
+  echo "El restore no filtra por ambiente; falta la clave real con la que se cifro ese archivo." >&2
+  echo "Usa BACKUP_DECRYPTION_PASSPHRASE, TRANSFER_BACKUP_PASSPHRASE o BACKUP_PASSPHRASE_FILE." >&2
+  exit 1
+}
+
+verify_backup_checksum
+
+echo "Verificando que el backup se pueda desencriptar sin importar su prefijo de ambiente..."
+select_backup_passphrase
+echo "Backup desencriptado correctamente usando ${BACKUP_PASSPHRASE_SOURCE}."
+
+if [[ -z "${BACKUP_PASSPHRASE}" ]]; then
+  echo "No se pudo resolver la clave del backup." >&2
+  exit 1
 fi
 
 confirm_restore() {
@@ -89,6 +199,7 @@ confirm_restore() {
 
   echo "ATENCION: se reemplazara completamente la base ${MODE} en ${DATA_DIR}."
   echo "Backup origen: ${BACKUP_FILE}"
+  echo "El prefijo del backup no cambia el destino; solo cuenta entorno/.env."
   read -r -p "Escribe RESTORE ${MODE} para continuar: " answer
   if [[ "${answer}" != "RESTORE ${MODE}" ]]; then
     echo "Restauracion cancelada" >&2
@@ -97,9 +208,6 @@ confirm_restore() {
 }
 
 confirm_restore
-
-echo "Verificando que el backup se pueda desencriptar antes de limpiar ${MODE}..."
-BACKUP_ENCRYPTION_PASSPHRASE="${BACKUP_PASSPHRASE}" decrypt_backup_stream < "${BACKUP_FILE}" >/dev/null
 
 RESTORE_ROLE="codex_restore_$(date +%s)"
 RESTORE_DB="${RESTORE_ROLE}_db"

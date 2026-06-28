@@ -15,7 +15,7 @@ Flujo normal:
   1. En origen:  ./scripts/transfer-db.sh export
   2. En destino: ./scripts/transfer-db.sh restore
 
-El ambiente activo sale de entorno/.env (ENTORNO_MODE=qa|production).
+El ambiente activo sale de entorno/.env.
 La clave temporal la eliges en origen y
 la vuelves a ingresar en destino. Esa clave no se guarda en Git. El paquete
 cifrado queda visible para Git; tu decides cuando hacer commit y push.
@@ -68,7 +68,7 @@ BACKUP_ARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode)
-      echo "No uses --mode. El ambiente se lee desde entorno/.env (ENTORNO_MODE)." >&2
+      echo "No uses --mode. El ambiente se lee desde entorno/.env." >&2
       usage >&2
       exit 1
       ;;
@@ -125,7 +125,7 @@ case "${COMMAND}" in
     TRANSFER_PASSPHRASE="${TRANSFER_BACKUP_PASSPHRASE:-${BACKUP_DECRYPTION_PASSPHRASE:-}}"
     if [[ -z "${TRANSFER_PASSPHRASE}" ]]; then
       echo "Ambiente detectado para restaurar: ${MODE}"
-      TRANSFER_PASSPHRASE="$(read_transfer_passphrase "Ingresa la misma clave temporal usada en el origen" 0)"
+      echo "El restore probara claves locales disponibles y, si hace falta, pedira la clave del backup."
     fi
 
     args=("${BACKUP_ARG}")
@@ -133,8 +133,12 @@ case "${COMMAND}" in
       args+=("--yes")
     fi
 
-    TRANSFER_BACKUP_PASSPHRASE="${TRANSFER_PASSPHRASE}" \
+    if [[ -n "${TRANSFER_PASSPHRASE}" ]]; then
+      TRANSFER_BACKUP_PASSPHRASE="${TRANSFER_PASSPHRASE}" \
+        "${SCRIPT_DIR}/import-from-git-transfer.sh" "${args[@]}"
+    else
       "${SCRIPT_DIR}/import-from-git-transfer.sh" "${args[@]}"
+    fi
     ;;
   *)
     echo "Comando no reconocido: ${COMMAND}" >&2

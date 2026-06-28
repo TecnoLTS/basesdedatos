@@ -12,7 +12,7 @@ Uso: ./scripts/export-for-git.sh [--label etiqueta-destino]
 Genera un backup cifrado con una clave temporal distinta a la clave normal del
 ambiente. El backup queda en git-transfer/ para que Git detecte el cambio. La
 clave temporal nunca se agrega al repo.
-El ambiente activo sale de entorno/.env (ENTORNO_MODE=qa|production).
+El ambiente activo sale de entorno/.env.
 
 Variables opcionales:
   TRANSFER_BACKUP_PASSPHRASE   Clave temporal ya acordada fuera de Git.
@@ -29,7 +29,7 @@ TARGET_LABEL="transfer"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     qa|production)
-      echo "No pases '$1' al export. El ambiente se lee desde entorno/.env (ENTORNO_MODE)." >&2
+      echo "No pases el ambiente al export. El ambiente se lee desde entorno/.env." >&2
       usage >&2
       exit 1
       ;;
@@ -64,7 +64,7 @@ TIMESTAMP="$(timestamp_utc)"
 SAFE_LABEL="$(printf '%s' "${TARGET_LABEL}" | tr -cs '[:alnum:]_.-' '-')"
 TRANSFER_DIR="${APP_DIR}/git-transfer"
 SECRETS_DIR="${APP_DIR}/transfer-secrets"
-PACKAGE_BASENAME="${MODE}-to-${SAFE_LABEL}-${TIMESTAMP}.sql.enc"
+PACKAGE_BASENAME="backup-${SAFE_LABEL}-${TIMESTAMP}.sql.enc"
 BACKUP_PATH="${TRANSFER_DIR}/${PACKAGE_BASENAME}"
 MANIFEST_PATH="${BACKUP_PATH}.manifest"
 

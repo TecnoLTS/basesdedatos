@@ -65,15 +65,14 @@ cd /home/admincenter/contenedores/basesdedatos
 ./scripts/backup-and-stop.sh
 ```
 
-El archivo queda en un solo directorio de backups. El prefijo `qa-` o `production-`
-sale de `ENTORNO_MODE` y solo sirve para no confundir snapshots:
+El archivo queda en un solo directorio de backups con nombre neutral:
 
 ```text
-basesdedatos/backups/<ENTORNO_MODE>-YYYYMMDDTHHMMSSZ.sql.enc
-basesdedatos/backups/<ENTORNO_MODE>-latest.sql.enc
+basesdedatos/backups/backup-YYYYMMDDTHHMMSSZ.sql.enc
+basesdedatos/backups/latest.sql.enc
 ```
 
-Restaurar el ultimo backup local disponible del ambiente activo:
+Restaurar el ultimo backup local disponible, sin filtrar por ambiente:
 
 ```bash
 cd /home/admincenter/contenedores/basesdedatos
@@ -89,6 +88,12 @@ cd /home/admincenter/contenedores/basesdedatos
 
 La restauracion reemplaza completamente el data dir del ambiente destino (`POSTGRES_DATA_DIR` en `entorno/.env`).
 No restaura solo una base logica; restaura todo el cluster.
+El nombre del archivo no define origen ni destino: restauras el `.sql.enc` que
+quieras en el ambiente al que apunte el `entorno/.env` activo. La clave de
+descifrado debe corresponder al backup origen; el script prueba
+`BACKUP_DECRYPTION_PASSPHRASE`, `TRANSFER_BACKUP_PASSPHRASE`,
+`BACKUP_PASSPHRASE_FILE`, una clave local de `transfer-secrets/` y la clave
+activa del `.env`.
 
 Exportar para transferencia por Git desde el servidor origen activo:
 
@@ -150,3 +155,43 @@ docker exec basesdedatos postgres --version
 docker compose --env-file entorno/.env ps
 docker compose --env-file entorno/.env logs -f db
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Corregido. Ahora el backup sale neutral:
+cd /home/admincenter/contenedores/basesdedatos
+./scripts/backup-and-stop.sh
+Genera:
+backups/backup-YYYYMMDDTHHMMSSZ.sql.enc
+backups/latest.sql.enc
+Restaurar el último backup disponible:
+cd /home/admincenter/contenedores/basesdedatos
+./scripts/restore-from-backup.sh --yes
+Restaurar un archivo exacto:
+cd /home/admincenter/contenedores/basesdedatos
+./scripts/restore-from-backup.sh backups/backup-YYYYMMDDTHHMMSSZ.sql.enc --yes
+También dejé neutral el flujo de transferencia:
+./scripts/transfer-db.sh export --label traslado
+./scripts/transfer-db.sh restore

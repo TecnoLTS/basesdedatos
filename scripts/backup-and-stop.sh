@@ -11,8 +11,8 @@ usage() {
   cat <<'USAGE'
 Uso: ./scripts/backup-and-stop.sh [ruta-backup.sql.enc]
 
-El ambiente activo sale de entorno/.env (ENTORNO_MODE=qa|production).
-No pases qa ni production como argumento.
+El ambiente activo sale de entorno/.env.
+No pases el ambiente como argumento.
 USAGE
 }
 
@@ -22,7 +22,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
 fi
 
 if legacy_mode_arg "${1:-}"; then
-  echo "No pases '${1}' al backup. El ambiente se lee desde entorno/.env (ENTORNO_MODE)." >&2
+  echo "No pases el ambiente al backup. El ambiente se lee desde entorno/.env." >&2
   echo "Uso correcto: ./scripts/backup-and-stop.sh [ruta-backup.sql.enc]" >&2
   exit 1
 fi
