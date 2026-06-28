@@ -9,10 +9,15 @@ usage() {
   cat <<'USAGE'
 Uso: ./scripts/restore-from-backup.sh [ruta-backup.sql.enc|directorio-backups] [--yes]
 
-Si no indicas archivo, se restaura el .sql.enc local mas reciente disponible,
-sin filtrar por nombre ni origen.
+Si no indicas archivo, se restaura el ultimo .sql.enc local disponible.
+Si indicas archivo, debe ser una ruta exacta existente.
 El ambiente activo sale de entorno/.env y solo define el destino.
 No pases el ambiente como argumento.
+
+Ejemplos:
+  ./scripts/restore-from-backup.sh --yes
+  ./scripts/restore-from-backup.sh backups/backup-20260628T193633Z.sql.enc --yes
+  ./scripts/restore-from-backup.sh --list
 
 Variables opcionales para descifrar:
   BACKUP_DECRYPTION_PASSPHRASE  Clave exacta del backup para uso no interactivo.
@@ -23,8 +28,29 @@ Variables opcionales para descifrar:
 USAGE
 }
 
+list_available_backups() {
+  local found=0
+
+  find "${APP_DIR}/backups" -maxdepth 3 \( -type f -o -type l \) -name '*.sql.enc' -printf '%T@ %TY-%Tm-%Td %TH:%TM %p\n' 2>/dev/null \
+    | sort -nr \
+    | awk -v root="${APP_DIR}/" '
+      NR <= 20 {
+        path = $4
+        sub(root, "", path)
+        printf "  %s  %s %s\n", path, $2, $3
+        found = 1
+      }
+      END {
+        if (!found) {
+          print "  <sin backups .sql.enc encontrados>"
+        }
+      }
+    '
+}
+
 BACKUP_FILE_ARG=""
 ASSUME_YES="${RESTORE_ASSUME_YES:-0}"
+LIST_ONLY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -35,6 +61,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --yes|-y)
       ASSUME_YES=1
+      ;;
+    --list)
+      LIST_ONLY=1
       ;;
     --help|-h)
       usage
@@ -51,6 +80,12 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if [[ "${LIST_ONLY}" == "1" ]]; then
+  echo "Backups disponibles, mas recientes primero:"
+  list_available_backups
+  exit 0
+fi
 
 MODE="$(active_mode_from_env)"
 ENV_FILE="$(resolve_env_file "${MODE}")"
@@ -71,8 +106,16 @@ if [[ -z "${BACKUP_FILE}" ]]; then
 fi
 
 if [[ -z "${BACKUP_FILE}" || ! -f "${BACKUP_FILE}" ]]; then
-  echo "No existe un snapshot local para restaurar." >&2
-  echo "Ejecuta primero ./scripts/backup-and-stop.sh o indica la ruta exacta de cualquier .sql.enc." >&2
+  if [[ -n "${BACKUP_FILE_ARG}" ]]; then
+    echo "No existe el archivo exacto indicado: ${BACKUP_FILE}" >&2
+    echo "Para restaurar el ultimo backup disponible, no pases nombre de archivo:" >&2
+    echo "  ./scripts/restore-from-backup.sh --yes" >&2
+    echo "Para restaurar uno especifico, usa una ruta real de esta lista:" >&2
+    list_available_backups >&2
+  else
+    echo "No existe un snapshot local para restaurar." >&2
+    echo "Ejecuta primero ./scripts/backup-and-stop.sh o indica la ruta exacta de cualquier .sql.enc." >&2
+  fi
   exit 1
 fi
 

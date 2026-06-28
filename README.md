@@ -75,18 +75,25 @@ basesdedatos/backups/backup-YYYYMMDDTHHMMSSZ.sql.enc
 basesdedatos/backups/latest.sql.enc
 ```
 
-Restaurar el ultimo backup local disponible, sin filtrar por ambiente:
+Restaurar el ultimo backup local disponible:
 
 ```bash
 cd /home/admincenter/contenedores/basesdedatos
-./scripts/restore-from-backup.sh
+./scripts/restore-from-backup.sh --yes
 ```
 
-Restaurar un archivo exacto:
+Listar backups reales disponibles:
 
 ```bash
 cd /home/admincenter/contenedores/basesdedatos
-./scripts/restore-from-backup.sh git-transfer/tu-backup.sql.enc --yes
+./scripts/restore-from-backup.sh --list
+```
+
+Restaurar un archivo exacto de esa lista:
+
+```bash
+cd /home/admincenter/contenedores/basesdedatos
+./scripts/restore-from-backup.sh backups/backup-20260628T193633Z.sql.enc --yes
 ```
 
 La restauracion reemplaza completamente el data dir del ambiente destino (`POSTGRES_DATA_DIR` en `entorno/.env`).
@@ -95,6 +102,8 @@ El nombre del archivo no define origen ni destino: restauras el `.sql.enc` que
 quieras en el ambiente al que apunte el `entorno/.env` activo. El restore pide
 la clave del backup y solo continua si esa clave descifra el archivo. `--yes`
 solo salta la confirmacion destructiva; no salta la clave.
+Si pasas un nombre, debe existir exactamente. `backup-YYYYMMDDTHHMMSSZ.sql.enc`
+es solo el patron del nombre, no un archivo real.
 
 Exportar para transferencia por Git desde el servidor origen activo:
 
