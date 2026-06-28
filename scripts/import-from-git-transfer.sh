@@ -14,7 +14,7 @@ pasa la restauracion al resolvedor comun de claves.
 El ambiente destino sale de entorno/.env.
 
 Variables opcionales:
-  BACKUP_DECRYPTION_PASSPHRASE  Clave temporal del paquete.
+  BACKUP_DECRYPTION_PASSPHRASE  Clave del paquete para uso no interactivo.
   TRANSFER_BACKUP_PASSPHRASE    Alias aceptado para la misma clave.
   BACKUP_PASSPHRASE_FILE        Archivo local con la clave, primera linea.
 USAGE

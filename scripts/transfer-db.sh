@@ -16,7 +16,7 @@ Flujo normal:
   2. En destino: ./scripts/transfer-db.sh restore
 
 El ambiente activo sale de entorno/.env.
-La clave temporal la eliges en origen y
+La clave del backup la eliges en origen y
 la vuelves a ingresar en destino. Esa clave no se guarda en Git. El paquete
 cifrado queda visible para Git; tu decides cuando hacer commit y push.
 USAGE
@@ -28,7 +28,7 @@ read_transfer_passphrase() {
   local first second
 
   if [[ ! -t 0 ]]; then
-    echo "Este comando necesita una terminal interactiva para pedir la clave temporal." >&2
+    echo "Este comando necesita una terminal interactiva para pedir la clave del backup." >&2
     echo "Alternativa: exporta TRANSFER_BACKUP_PASSPHRASE antes de ejecutarlo." >&2
     exit 1
   fi
@@ -37,12 +37,12 @@ read_transfer_passphrase() {
   read -r -s first
   echo >&2
   if [[ "${#first}" -lt 5 ]]; then
-    echo "La clave temporal debe tener al menos 20 caracteres." >&2
+    echo "La clave del backup debe tener al menos 5 caracteres." >&2
     exit 1
   fi
 
   if [[ "${confirm}" == "1" ]]; then
-    printf '%s' "Repite la clave temporal: " >&2
+    printf '%s' "Repite la clave del backup: " >&2
     read -r -s second
     echo >&2
     if [[ "${first}" != "${second}" ]]; then
@@ -106,7 +106,7 @@ case "${COMMAND}" in
     TRANSFER_PASSPHRASE="${TRANSFER_BACKUP_PASSPHRASE:-}"
     if [[ -z "${TRANSFER_PASSPHRASE}" ]]; then
       echo "Ambiente detectado para exportar: ${MODE}"
-      TRANSFER_PASSPHRASE="$(read_transfer_passphrase "Elige una clave temporal para este backup" 1)"
+      TRANSFER_PASSPHRASE="$(read_transfer_passphrase "Elige una clave para este backup" 1)"
     fi
 
     TRANSFER_BACKUP_PASSPHRASE="${TRANSFER_PASSPHRASE}" \
@@ -125,7 +125,7 @@ case "${COMMAND}" in
     TRANSFER_PASSPHRASE="${TRANSFER_BACKUP_PASSPHRASE:-${BACKUP_DECRYPTION_PASSPHRASE:-}}"
     if [[ -z "${TRANSFER_PASSPHRASE}" ]]; then
       echo "Ambiente detectado para restaurar: ${MODE}"
-      echo "El restore probara claves locales disponibles y, si hace falta, pedira la clave del backup."
+      echo "El restore pedira la clave del backup y la validara antes de tocar datos."
     fi
 
     args=("${BACKUP_ARG}")

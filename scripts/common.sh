@@ -462,7 +462,6 @@ load_env_file() {
   : "${POSTGRES_USER:?Falta POSTGRES_USER en ${env_file}}"
   : "${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en ${env_file}}"
   : "${POSTGRES_DB:?Falta POSTGRES_DB en ${env_file}}"
-  : "${BACKUP_ENCRYPTION_PASSPHRASE:?Falta BACKUP_ENCRYPTION_PASSPHRASE en ${env_file}}"
 
   POSTGRES_DATA_DIR="${POSTGRES_DATA_DIR:-./postgres18_data}"
   DATA_DIR="$(absolute_app_path "${POSTGRES_DATA_DIR}")"

@@ -9,14 +9,46 @@ usage() {
   cat <<'USAGE'
 Uso: ./scripts/export-for-git.sh [--label etiqueta-destino]
 
-Genera un backup cifrado con una clave temporal distinta a la clave normal del
-ambiente. El backup queda en git-transfer/ para que Git detecte el cambio. La
-clave temporal nunca se agrega al repo.
+Genera un backup cifrado con la clave que escribas en la terminal. El backup
+queda en git-transfer/ para que Git detecte el cambio. La clave nunca se agrega
+al repo.
 El ambiente activo sale de entorno/.env.
 
 Variables opcionales:
-  TRANSFER_BACKUP_PASSPHRASE   Clave temporal ya acordada fuera de Git.
+  TRANSFER_BACKUP_PASSPHRASE   Clave para uso no interactivo.
 USAGE
+}
+
+read_export_passphrase() {
+  local first second
+
+  if [[ -n "${TRANSFER_BACKUP_PASSPHRASE:-}" ]]; then
+    printf '%s\n' "${TRANSFER_BACKUP_PASSPHRASE}"
+    return 0
+  fi
+
+  if [[ ! -t 0 ]]; then
+    echo "Este export necesita una terminal interactiva para pedir la clave." >&2
+    echo "Alternativa no interactiva: exporta TRANSFER_BACKUP_PASSPHRASE." >&2
+    exit 1
+  fi
+
+  read -r -s -p "Clave para cifrar este backup: " first
+  echo >&2
+  read -r -s -p "Repite la clave del backup: " second
+  echo >&2
+
+  if [[ -z "${first}" ]]; then
+    echo "La clave del backup no puede estar vacia." >&2
+    exit 1
+  fi
+
+  if [[ "${first}" != "${second}" ]]; then
+    echo "Las claves no coinciden; no se genero ningun backup." >&2
+    exit 1
+  fi
+
+  printf '%s\n' "${first}"
 }
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
@@ -63,22 +95,12 @@ ensure_prereqs
 TIMESTAMP="$(timestamp_utc)"
 SAFE_LABEL="$(printf '%s' "${TARGET_LABEL}" | tr -cs '[:alnum:]_.-' '-')"
 TRANSFER_DIR="${APP_DIR}/git-transfer"
-SECRETS_DIR="${APP_DIR}/transfer-secrets"
 PACKAGE_BASENAME="backup-${SAFE_LABEL}-${TIMESTAMP}.sql.enc"
 BACKUP_PATH="${TRANSFER_DIR}/${PACKAGE_BASENAME}"
 MANIFEST_PATH="${BACKUP_PATH}.manifest"
 
-mkdir -p "${TRANSFER_DIR}" "${SECRETS_DIR}"
-chmod 700 "${SECRETS_DIR}"
-
-TRANSFER_PASSPHRASE="${TRANSFER_BACKUP_PASSPHRASE:-}"
-PASSPHRASE_FILE=""
-if [[ -z "${TRANSFER_PASSPHRASE}" ]]; then
-  TRANSFER_PASSPHRASE="$(openssl rand -base64 48)"
-  PASSPHRASE_FILE="${SECRETS_DIR}/${PACKAGE_BASENAME}.passphrase"
-  umask 077
-  printf '%s\n' "${TRANSFER_PASSPHRASE}" > "${PASSPHRASE_FILE}"
-fi
+mkdir -p "${TRANSFER_DIR}"
+TRANSFER_PASSPHRASE="$(read_export_passphrase)"
 
 cat > "${MANIFEST_PATH}" <<EOF
 source_mode=${MODE}
@@ -102,12 +124,5 @@ echo "Paquete listo:"
 echo "  ${BACKUP_PATH}"
 echo "  ${BACKUP_PATH}.sha256"
 echo "  ${MANIFEST_PATH}"
-
-if [[ -n "${PASSPHRASE_FILE}" ]]; then
-  echo "Clave temporal guardada localmente, NO la subas a Git:"
-  echo "  ${PASSPHRASE_FILE}"
-else
-  echo "Se uso TRANSFER_BACKUP_PASSPHRASE desde el entorno; no se guardo clave local."
-fi
 
 echo "Git detectara estos archivos; decide luego si haces commit y push."

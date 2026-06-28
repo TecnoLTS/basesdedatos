@@ -15,9 +15,11 @@ El ambiente activo sale de entorno/.env y solo define el destino.
 No pases el ambiente como argumento.
 
 Variables opcionales para descifrar:
-  BACKUP_DECRYPTION_PASSPHRASE  Clave exacta del backup.
-  TRANSFER_BACKUP_PASSPHRASE    Alias para backups de git-transfer.
+  BACKUP_DECRYPTION_PASSPHRASE  Clave exacta del backup para uso no interactivo.
+  TRANSFER_BACKUP_PASSPHRASE    Alias para uso no interactivo.
   BACKUP_PASSPHRASE_FILE        Archivo local con la clave, primera linea.
+
+--yes solo salta la confirmacion destructiva; no salta la clave del backup.
 USAGE
 }
 
@@ -55,7 +57,7 @@ ENV_FILE="$(resolve_env_file "${MODE}")"
 
 ensure_prereqs
 load_env_file "${ENV_FILE}"
-BACKUP_PASSPHRASE="${BACKUP_DECRYPTION_PASSPHRASE:-}"
+BACKUP_PASSPHRASE=""
 
 if [[ -z "${BACKUP_FILE}" ]]; then
   if [[ -n "${BACKUP_FILE_ARG}" ]]; then
@@ -92,62 +94,49 @@ verify_backup_checksum() {
   )
 }
 
-declare -a PASSPHRASE_CANDIDATES=()
-declare -a PASSPHRASE_SOURCES=()
-
-add_passphrase_candidate() {
-  local source="$1"
-  local value="$2"
-  local index
-
-  [[ -n "${value}" ]] || return 0
-
-  for index in "${!PASSPHRASE_CANDIDATES[@]}"; do
-    if [[ "${PASSPHRASE_CANDIDATES[${index}]}" == "${value}" ]]; then
-      return 0
-    fi
-  done
-
-  PASSPHRASE_CANDIDATES+=("${value}")
-  PASSPHRASE_SOURCES+=("${source}")
-}
-
-add_passphrase_file_candidate() {
-  local source="$1"
-  local file="$2"
-  local value=""
-
-  [[ -n "${file}" && -f "${file}" ]] || return 0
-
-  IFS= read -r value < "${file}" || true
-  add_passphrase_candidate "${source}" "${value}"
-}
-
 try_decrypt_backup() {
   local passphrase="$1"
 
   BACKUP_ENCRYPTION_PASSPHRASE="${passphrase}" decrypt_backup_stream < "${BACKUP_FILE}" >/dev/null 2>&1
 }
 
+try_passphrase_source() {
+  local source="$1"
+  local passphrase="$2"
+
+  [[ -n "${passphrase}" ]] || return 1
+
+  if try_decrypt_backup "${passphrase}"; then
+    BACKUP_PASSPHRASE="${passphrase}"
+    BACKUP_PASSPHRASE_SOURCE="${source}"
+    return 0
+  fi
+
+  echo "La clave de ${source} no descifra este backup." >&2
+  return 1
+}
+
 select_backup_passphrase() {
-  local index
-  local entered_passphrase
-  local available_sources="ninguna"
+  local entered_passphrase file_passphrase=""
 
-  add_passphrase_candidate "BACKUP_DECRYPTION_PASSPHRASE" "${BACKUP_DECRYPTION_PASSPHRASE:-}"
-  add_passphrase_candidate "TRANSFER_BACKUP_PASSPHRASE" "${TRANSFER_BACKUP_PASSPHRASE:-}"
-  add_passphrase_candidate "BACKUP_ENCRYPTION_PASSPHRASE_OVERRIDE" "${BACKUP_ENCRYPTION_PASSPHRASE_OVERRIDE:-}"
-  add_passphrase_file_candidate "BACKUP_PASSPHRASE_FILE" "${BACKUP_PASSPHRASE_FILE:-}"
-  add_passphrase_file_candidate "transfer-secrets/$(basename "${BACKUP_FILE}").passphrase" "${APP_DIR}/transfer-secrets/$(basename "${BACKUP_FILE}").passphrase"
-  add_passphrase_candidate "BACKUP_ENCRYPTION_PASSPHRASE de entorno/.env activo" "${BACKUP_ENCRYPTION_PASSPHRASE:-}"
-
-  for index in "${!PASSPHRASE_CANDIDATES[@]}"; do
-    if try_decrypt_backup "${PASSPHRASE_CANDIDATES[${index}]}"; then
-      BACKUP_PASSPHRASE="${PASSPHRASE_CANDIDATES[${index}]}"
-      BACKUP_PASSPHRASE_SOURCE="${PASSPHRASE_SOURCES[${index}]}"
+  if [[ -n "${BACKUP_PASSPHRASE_FILE:-}" ]]; then
+    if [[ ! -f "${BACKUP_PASSPHRASE_FILE}" ]]; then
+      echo "No existe BACKUP_PASSPHRASE_FILE=${BACKUP_PASSPHRASE_FILE}" >&2
+      exit 1
+    fi
+    IFS= read -r file_passphrase < "${BACKUP_PASSPHRASE_FILE}" || true
+    if try_passphrase_source "BACKUP_PASSPHRASE_FILE" "${file_passphrase}"; then
       return 0
     fi
-  done
+  fi
+
+  if try_passphrase_source "BACKUP_DECRYPTION_PASSPHRASE" "${BACKUP_DECRYPTION_PASSPHRASE:-}"; then
+    return 0
+  fi
+
+  if try_passphrase_source "TRANSFER_BACKUP_PASSPHRASE" "${TRANSFER_BACKUP_PASSPHRASE:-}"; then
+    return 0
+  fi
 
   if [[ -t 0 ]]; then
     while true; do
@@ -166,19 +155,14 @@ select_backup_passphrase() {
     done
   fi
 
-  if (( ${#PASSPHRASE_SOURCES[@]} > 0 )); then
-    available_sources="${PASSPHRASE_SOURCES[*]}"
-  fi
-
-  echo "No pude desencriptar ${BACKUP_FILE} con las claves disponibles: ${available_sources}." >&2
-  echo "El restore no filtra por ambiente; falta la clave real con la que se cifro ese archivo." >&2
+  echo "Falta una clave valida para desencriptar ${BACKUP_FILE}." >&2
   echo "Usa BACKUP_DECRYPTION_PASSPHRASE, TRANSFER_BACKUP_PASSPHRASE o BACKUP_PASSPHRASE_FILE." >&2
   exit 1
 }
 
 verify_backup_checksum
 
-echo "Verificando que el backup se pueda desencriptar sin importar su prefijo de ambiente..."
+echo "Verificando la clave del backup antes de tocar datos..."
 select_backup_passphrase
 echo "Backup desencriptado correctamente usando ${BACKUP_PASSPHRASE_SOURCE}."
 

@@ -65,6 +65,9 @@ cd /home/admincenter/contenedores/basesdedatos
 ./scripts/backup-and-stop.sh
 ```
 
+El comando pide una clave para cifrar el backup y la solicita dos veces. Esa
+misma clave se debe ingresar al restaurar.
+
 El archivo queda en un solo directorio de backups con nombre neutral:
 
 ```text
@@ -89,11 +92,9 @@ cd /home/admincenter/contenedores/basesdedatos
 La restauracion reemplaza completamente el data dir del ambiente destino (`POSTGRES_DATA_DIR` en `entorno/.env`).
 No restaura solo una base logica; restaura todo el cluster.
 El nombre del archivo no define origen ni destino: restauras el `.sql.enc` que
-quieras en el ambiente al que apunte el `entorno/.env` activo. La clave de
-descifrado debe corresponder al backup origen; el script prueba
-`BACKUP_DECRYPTION_PASSPHRASE`, `TRANSFER_BACKUP_PASSPHRASE`,
-`BACKUP_PASSPHRASE_FILE`, una clave local de `transfer-secrets/` y la clave
-activa del `.env`.
+quieras en el ambiente al que apunte el `entorno/.env` activo. El restore pide
+la clave del backup y solo continua si esa clave descifra el archivo. `--yes`
+solo salta la confirmacion destructiva; no salta la clave.
 
 Exportar para transferencia por Git desde el servidor origen activo:
 
@@ -123,7 +124,7 @@ cd /home/admincenter/contenedores/basesdedatos
 ./scripts/transfer-db.sh restore git-transfer/tu-backup.sql.enc
 ```
 
-La restauracion pide la misma clave temporal usada al exportar.
+La restauracion pide la misma clave usada al exportar.
 Si no quieres prompt interactivo:
 
 ```bash
@@ -155,43 +156,3 @@ docker exec basesdedatos postgres --version
 docker compose --env-file entorno/.env ps
 docker compose --env-file entorno/.env logs -f db
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Corregido. Ahora el backup sale neutral:
-cd /home/admincenter/contenedores/basesdedatos
-./scripts/backup-and-stop.sh
-Genera:
-backups/backup-YYYYMMDDTHHMMSSZ.sql.enc
-backups/latest.sql.enc
-Restaurar el último backup disponible:
-cd /home/admincenter/contenedores/basesdedatos
-./scripts/restore-from-backup.sh --yes
-Restaurar un archivo exacto:
-cd /home/admincenter/contenedores/basesdedatos
-./scripts/restore-from-backup.sh backups/backup-YYYYMMDDTHHMMSSZ.sql.enc --yes
-También dejé neutral el flujo de transferencia:
-./scripts/transfer-db.sh export --label traslado
-./scripts/transfer-db.sh restore
