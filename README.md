@@ -18,13 +18,9 @@ Bases logicas principales en este servicio:
 
 | Base logica | Owner actual |
 |---|---|
-| `paramascotasec` | compatibilidad/bootstrap ecommerce |
-| `identity_platform` | identidad, tenants y permisos |
-| `catalog_inventory` | catalogo e inventario |
-| `commerce_orders` | pedidos y ventas |
-| `billing_service` | Billing SRI, XML, RIDE y configuracion fiscal |
-| `reporting_finance` | reporteria financiera |
-| `mailer_service` | correo/outbox |
+| `dashboard` | usuarios, tenants, permisos, orquestacion y correo tecnico |
+| `ecommerce` | catalogo, inventario, pedidos, ventas y reportes operativos ecommerce |
+| `facturacion` | Billing SRI, XML, RIDE y configuracion fiscal |
 
 ## Despliegues
 
@@ -55,8 +51,8 @@ El mismo `deploy.sh` lee `ENTORNO_MODE`, `DB_ENV` y `POSTGRES_DATA_DIR` desde `e
 ## Backups
 
 Los scripts hacen backup del cluster PostgreSQL completo con `pg_dumpall`.
-Eso incluye en un solo archivo todas las bases logicas: ecommerce, Billing SRI, identidad, catalogo, pedidos, reporting y mailer.
-No existe un backup separado del Facturador como runtime; Billing SRI vive en la base logica `billing_service` dentro de este servicio.
+Eso incluye en un solo archivo las bases logicas de negocio: `dashboard`, `ecommerce` y `facturacion`.
+No existe un backup separado del Facturador como runtime; Billing SRI vive en la base logica `facturacion` dentro de este servicio.
 
 Snapshot cifrado local del ambiente activo:
 
@@ -208,3 +204,10 @@ cd /home/admincenter/contenedores/basesdedatos
 cd /home/admincenter/contenedores/basesdedatos
 ./scripts/transfer-db.sh restore --yes
 
+
+
+
+
+Tunel
+
+ssh -N -L 15432:172.19.0.4:5432 root@192.168.100.229
